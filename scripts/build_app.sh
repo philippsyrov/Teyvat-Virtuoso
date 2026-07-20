@@ -17,5 +17,7 @@ cp "$project_root/player/Info.plist" "$app_root/Contents/Info.plist"
 cp "$project_root/scores/public-domain/library.json" "$app_root/Contents/Resources/library.json"
 # Bundle every score listed by that manifest.
 cp "$project_root/scores/public-domain/"*.json "$app_root/Contents/Resources/"
+# Ad-hoc sign the complete bundle under one stable identifier so Accessibility approval survives rebuilds.
+codesign --force --deep --sign - --identifier "com.philippsyrov.teyvat-virtuoso" "$app_root"
 # Print the exact app path Finder can open.
 echo "Built $app_root"

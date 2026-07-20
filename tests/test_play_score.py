@@ -63,6 +63,13 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("Bundle.main", source)
         self.assertIn("Timing: original 100%", source)
 
+    def test_native_app_blocks_silent_playback_without_accessibility(self):
+        """Playback must explain missing permission instead of dropping every key silently."""
+        root = Path(__file__).parents[1]
+        source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
+        self.assertIn("AXIsProcessTrustedWithOptions", source)
+        self.assertIn("Accessibility permission is required", source)
+
     def test_native_app_retains_its_window_for_the_full_app_lifetime(self):
         """AppKit must not release a locally-created NSWindow after launch."""
         root = Path(__file__).parents[1]
@@ -121,6 +128,21 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("stack.frame.size.height = stack.fittingSize.height", source)
         self.assertIn("grid.setContentHuggingPriority(.required, for: .vertical)", source)
         self.assertNotIn("height: 900", source)
+
+    def test_build_binds_the_stable_bundle_identity(self):
+        """Rebuilds must retain one Accessibility identity instead of linker-signing each binary."""
+        root = Path(__file__).parents[1]
+        subprocess.run([str(root / "scripts" / "build_app.sh")], check=True, capture_output=True, text=True)
+        app = root / "build" / "Teyvat Virtuoso.app"
+        result = subprocess.run(
+            ["codesign", "-d", "--verbose=4", str(app)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        signature = result.stdout + result.stderr
+        self.assertIn("Identifier=com.philippsyrov.teyvat-virtuoso", signature)
+        self.assertIn("Info.plist entries=", signature)
 
 
 if __name__ == "__main__":
