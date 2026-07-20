@@ -268,6 +268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Store the currently imported MIDI document and its source filename.
     private var importedDocument: MidiDocument?
     private var importedTitle = "Imported MIDI"
+    private var importedFilename = "Imported MIDI"
     // Keep source track index to checkbox mappings.
     private var trackButtons: [Int: NSButton] = [:]
     // Store the native song selector.
@@ -288,6 +289,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var playImportedButton = NSButton(title: "Play Imported — 5 second focus time", target: self, action: #selector(playImported))
     // Store the generated-score persistence action.
     private lazy var saveImportedButton = NSButton(title: "Save to Library", target: self, action: #selector(saveImported))
+    // Store the selected local song's persistent favourite action.
+    private lazy var favoriteButton = NSButton(title: "♡ Favourite", target: self, action: #selector(toggleFavorite))
     // Own the local Application Support score store.
     private let userScoreStore = UserScoreStore()
     // Own the cancellable native keyboard player.
@@ -408,6 +411,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return library.songs + userScoreStore.loadSongs()
     }
 
+    // Rebuild the picker from protected bundled songs and current local storage.
+    private func refreshLibrary(selectingID requestedID: String? = nil) {
+        // Reload disk state so favourites and clearing are reflected immediately.
+        songs = loadLibrary()
+        // Replace every visible title in one deterministic pass.
+        songPicker.removeAllItems()
+        songPicker.addItems(withTitles: songs.map(pickerTitle))
+        // Preserve the requested identity when it still exists after sorting or clearing.
+        if let requestedID, let index = songs.firstIndex(where: { $0.id == requestedID }) {
+            songPicker.selectItem(at: index)
+        } else if !songs.isEmpty {
+            // Fall back to protected Aloha at index zero.
+            songPicker.selectItem(at: 0)
+        }
+        // Refresh the subtitle and favourite-button state for the selected row.
+        updateSubtitle()
+    }
+
+    // Prefix favourites inside the selector without changing their stored title.
+    private func pickerTitle(for song: Song) -> String {
+        // Show a filled heart only for persistent local favourites.
+        return song.isFavorite ? "♥ \(song.title)" : song.title
+    }
+
     // Create one section heading with a caller-selected size.
     private func makeHeading(_ text: String, size: CGFloat) -> NSTextField {
         // Create a non-editable label.
@@ -441,13 +468,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Fill the saved-song picker and connect selection changes.
     private func configureLibraryPicker() {
-        // Add each manifest title in order.
-        songPicker.addItems(withTitles: songs.map(\.title))
         // Route selection changes to the subtitle updater.
         songPicker.target = self
         songPicker.action = #selector(selectionChanged)
-        // Show the first song detail immediately.
-        updateSubtitle()
+        // Populate titles and select protected Aloha at first launch.
+        refreshLibrary(selectingID: "aloha_oe")
     }
 
     // Configure all deterministic import controls.
@@ -456,9 +481,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         transposePicker.addItems(withTitles: (-6...6).map { "\($0 >= 0 ? "+" : "")\($0) semitones" })
         // Default to no shift before a file recommends one.
         transposePicker.selectItem(at: 6)
-        // Offer the three explicit chromatic-note policies.
-        policyPicker.addItems(withTitles: ["Strict — skip black keys", "Snap black keys down", "Snap black keys up"])
-        // Default to strict preservation.
+        // Recompute the selected-track key when the user changes transposition.
+        transposePicker.target = self
+        transposePicker.action = #selector(refreshImportSummary)
+        // Offer Smart first while retaining every legacy chromatic-note policy.
+        policyPicker.addItems(withTitles: ["Smart — key-aware", "Strict — skip black keys", "Snap black keys down", "Snap black keys up"])
+        // Default every new import to key-aware reduction.
         policyPicker.selectItem(at: 0)
         // Offer conservative near-onset chord windows.
         mergePicker.addItems(withTitles: ["Off", "15 ms", "25 ms", "40 ms"])
@@ -502,6 +530,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         row.addArrangedSubview(NSButton(title: "Play Saved — 5 second focus time", target: self, action: #selector(playSelected)))
         // Add the common immediate stop action.
         row.addArrangedSubview(NSButton(title: "Stop", target: self, action: #selector(stopPlayback)))
+        // Add one persistent favourite toggle for imported saved songs.
+        row.addArrangedSubview(favoriteButton)
+        // Add a confirmed bulk clear that never removes Aloha.
+        row.addArrangedSubview(NSButton(title: "Clear Imported Library…", target: self, action: #selector(clearImportedLibrary)))
         // Return the ready row.
         return row
     }
@@ -550,14 +582,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             importedDocument = document
             // Use the source filename as the performance title.
             importedTitle = url.deletingPathExtension().lastPathComponent
+            // Preserve the complete filename for the live analysis summary.
+            importedFilename = url.lastPathComponent
             // Apply the engine's best shared key recommendation.
             transposePicker.selectItem(at: max(0, min(12, document.bestTranspose + 6)))
+            // Begin every newly loaded MIDI with the recommended Smart policy.
+            policyPicker.selectItem(at: 0)
             // Rebuild one enabled checkbox per musical source track.
             rebuildTrackButtons(document.tracks)
-            // Show honest source facts and natural-note fit.
-            let totalNotes = document.tracks.reduce(0) { $0 + $1.noteCount }
-            let fit = document.naturalFit(transpose: document.bestTranspose)
-            importSummaryLabel.stringValue = "\(url.lastPathComponent) • \(formatDuration(document.durationMs)) • \(totalNotes) notes • \(document.tracks.count) musical tracks • \(String(format: "%.1f", fit * 100))% natural-note fit at \(signed(document.bestTranspose))"
+            // Show selected-track fit and the key Smart will use.
+            refreshImportSummary()
             // Enable live conversion and playback.
             playImportedButton.isEnabled = true
             saveImportedButton.isEnabled = true
@@ -587,7 +621,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Build a concise human-readable track label.
             let title = "\(track.name) — \(track.noteCount) notes, MIDI \(track.minimumNote)–\(track.maximumNote), \(track.chordOnsets) chord onsets"
             // Use a switch-style checkbox so selected tracks are obvious.
-            let button = NSButton(checkboxWithTitle: title, target: nil, action: nil)
+            let button = NSButton(checkboxWithTitle: title, target: self, action: #selector(refreshImportSummary))
             // Enable every musical track initially; the user can remove noisy parts.
             button.state = .on
             // Preserve the original track index outside AppKit's sequential rows.
@@ -599,6 +633,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let stack = tracksStack.superview as? NSStackView {
             stack.frame.size.height = stack.fittingSize.height
         }
+    }
+
+    // Refresh selected-track fit and detected key after import-option changes.
+    @objc private func refreshImportSummary() {
+        // Leave the initial instruction untouched before a MIDI is loaded.
+        guard let document = importedDocument else { return }
+        // Read the exact source tracks currently enabled in the UI.
+        let enabled = Set(trackButtons.compactMap { index, button in button.state == .on ? index : nil })
+        // Explain an empty selection directly instead of inventing a key.
+        guard !enabled.isEmpty else {
+            importSummaryLabel.stringValue = "\(importedFilename) • No musical tracks enabled"
+            return
+        }
+        // Read the visible shared transpose.
+        let transpose = transposePicker.indexOfSelectedItem - 6
+        // Count only notes belonging to the enabled track checkboxes.
+        let selectedTracks = document.tracks.filter { enabled.contains($0.index) }
+        let totalNotes = selectedTracks.reduce(0) { $0 + $1.noteCount }
+        // Measure directly playable notes under the selected shared shift.
+        let fit = document.naturalFit(transpose: transpose, enabledTrackIndexes: enabled)
+        // Detect the same key the Smart converter will use for this selection.
+        let keyName = document.detectedKey(transpose: transpose, enabledTrackIndexes: enabled)?.name ?? "Unknown"
+        // Present honest source and reduction facts in one readable summary.
+        importSummaryLabel.stringValue = "\(importedFilename) • \(formatDuration(document.durationMs)) • \(totalNotes) notes • \(selectedTracks.count) enabled tracks • \(String(format: "%.1f", fit * 100))% natural-note fit at \(signed(transpose)) • Detected key: \(keyName)"
     }
 
     // Convert current controls into one deterministic score.
@@ -646,15 +704,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             // Persist only score events and display metadata.
             let song = try userScoreStore.save(title: importedTitle, events: score)
-            // Append the new entry to the live combined library.
-            songs.append(song)
-            // Rebuild picker titles without touching stored score files.
-            songPicker.removeAllItems()
-            songPicker.addItems(withTitles: songs.map(\.title))
-            // Select the newly saved performance.
-            songPicker.selectItem(at: songs.count - 1)
-            // Show its generated-score description.
-            updateSubtitle()
+            // Reload and select the new stable ID through the common picker path.
+            refreshLibrary(selectingID: song.id)
             // Confirm the local-only storage boundary.
             statusLabel.stringValue = "Saved generated score locally. The original MIDI was not copied."
         } catch {
@@ -674,12 +725,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Reflect saved-song selection changes beneath the picker.
     @objc private func selectionChanged() { updateSubtitle() }
 
+    // Toggle the selected imported performance's persistent favourite state.
+    @objc private func toggleFavorite() {
+        // Resolve the current picker row safely.
+        let index = songPicker.indexOfSelectedItem
+        // Protect Aloha and reject an absent local selection.
+        guard songs.indices.contains(index), songs[index].userProvided == true else { return }
+        // Preserve the stable ID across favourite-driven reordering.
+        let selected = songs[index]
+        do {
+            // Persist the inverse state through the local-only score store.
+            _ = try userScoreStore.setFavorite(id: selected.id, isFavorite: !selected.isFavorite)
+            // Reload titles, order, subtitle, and button label around that same ID.
+            refreshLibrary(selectingID: selected.id)
+            // Confirm the durable result without changing playback.
+            statusLabel.stringValue = selected.isFavorite ? "Removed from favourites." : "Added to favourites."
+        } catch {
+            // Leave the current picker untouched when persistence fails.
+            statusLabel.stringValue = "Could not update favourite: \(error.localizedDescription)"
+        }
+    }
+
+    // Confirm and remove every locally generated arrangement while preserving Aloha.
+    @objc private func clearImportedLibrary() {
+        // Explain the exact destructive boundary before any file write.
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Clear imported library?"
+        alert.informativeText = "This removes generated saved arrangements. Aloha ʻOe and your original MIDI files remain untouched."
+        // Make the destructive and cancellation choices explicit.
+        alert.addButton(withTitle: "Clear Imported Songs")
+        alert.addButton(withTitle: "Cancel")
+        // Perform no writes when the user cancels or closes the alert.
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            // Clear only the dedicated Application Support score store.
+            try userScoreStore.clear()
+            // Return the live selector to protected Aloha immediately.
+            refreshLibrary(selectingID: "aloha_oe")
+            // Confirm exactly what survived.
+            statusLabel.stringValue = "Imported library cleared. Aloha ʻOe and original MIDI files were kept."
+        } catch {
+            // Keep the existing in-memory picker when clearing fails.
+            statusLabel.stringValue = "Could not clear imported library: \(error.localizedDescription)"
+        }
+    }
+
     // Copy the selected saved arrangement subtitle into the window.
     private func updateSubtitle() {
         // Resolve the selected row safely.
         let index = songPicker.indexOfSelectedItem
         // Show a fallback only when the bundle has no manifest.
-        subtitleLabel.stringValue = songs.indices.contains(index) ? songs[index].subtitle : "No bundled songs found."
+        guard songs.indices.contains(index) else {
+            subtitleLabel.stringValue = "No bundled songs found."
+            favoriteButton.isEnabled = false
+            return
+        }
+        // Show the selected arrangement description.
+        let selected = songs[index]
+        subtitleLabel.stringValue = selected.subtitle
+        // Protect bundled Aloha from local metadata actions.
+        favoriteButton.isEnabled = selected.userProvided == true
+        // Reflect the selected local entry's persistent state.
+        favoriteButton.title = selected.isFavorite ? "♥ Unfavourite" : "♡ Favourite"
     }
 
     // Stop either bundled or imported playback.
@@ -689,9 +797,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var selectedMissingPolicy: MissingNotePolicy {
         // Match the configured popup order.
         switch policyPicker.indexOfSelectedItem {
-        case 1: return .down
-        case 2: return .up
-        default: return .skip
+        case 1: return .skip
+        case 2: return .down
+        case 3: return .up
+        default: return .smart
         }
     }
 
