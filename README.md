@@ -1,4 +1,4 @@
-# Genshin Lyre Player
+# Teyvat Virtuoso
 
 A tiny native macOS player for Genshin's three-row lyre keyboard. It sends the mapped Mac keys to the focused game window, preserves a prepared score's timing, and presses chord notes together.
 
@@ -21,11 +21,11 @@ Low:    Z X C V B N M
 ## Build and run
 
 ```zsh
-cd '/Users/philippsyrov/Desktop/CS Projects/GenshinLyrePlayer'
+cd '/Users/philippsyrov/Desktop/CS Projects/TeyvatVirtuoso'
 python3 -m pip install -r scripts/requirements.txt
 python3 -m unittest tests/test_play_score.py
 ./scripts/build_app.sh
-open 'build/Genshin Lyre Player.app'
+open 'build/Teyvat Virtuoso.app'
 ```
 
 Open the lyre in Genshin, click the game during the five-second countdown, then leave it focused. The app sends real key-down and key-up events, so it can play saved chords rather than mouse-clicking one note at a time.

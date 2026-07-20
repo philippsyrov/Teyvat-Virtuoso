@@ -1,4 +1,4 @@
-# GenshinLyrePlayer workflow
+# Teyvat Virtuoso workflow
 
 This is a native macOS Swift app plus small Python MIDI analysis tools.
 
