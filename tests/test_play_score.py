@@ -70,6 +70,58 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("private var window: NSWindow?", source)
         self.assertIn("self.window = NSWindow(", source)
 
+    def test_native_midi_engine_contract(self):
+        """The dependency-free Swift engine must parse timing, tracks, and chords."""
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "midi-engine-tests"
+            subprocess.run(
+                [
+                    "swiftc",
+                    str(root / "player" / "MidiEngine.swift"),
+                    str(root / "tests" / "MidiEngineTests.swift"),
+                    "-o",
+                    str(executable),
+                ],
+                check=True,
+            )
+            result = subprocess.run([str(executable)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("MidiEngineTests passed", result.stdout)
+
+    def test_native_app_exposes_the_complete_midi_import_workflow(self):
+        """The visible app must wire drag/drop, track choice, mapping, and playback."""
+        root = Path(__file__).parents[1]
+        source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
+        self.assertIn("registerForDraggedTypes([.fileURL])", source)
+        self.assertIn("Open MIDI…", source)
+        self.assertIn("Enabled tracks", source)
+        self.assertIn("Strict — skip black keys", source)
+        self.assertIn("Snap black keys down", source)
+        self.assertIn("Snap black keys up", source)
+        self.assertIn("Merge nearby notes", source)
+        self.assertIn("play(score:", source)
+
+    def test_imported_scores_can_be_saved_without_copying_private_midi(self):
+        """Local persistence must store generated JSON under Application Support only."""
+        root = Path(__file__).parents[1]
+        source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
+        private_docs = (root / "docs" / "PRIVATE_SCORES.md").read_text()
+        self.assertIn("final class UserScoreStore", source)
+        self.assertIn("custom-library.json", source)
+        self.assertIn("Save to Library", source)
+        self.assertIn("applicationSupportDirectory", source)
+        self.assertIn("original MIDI is never copied", private_docs)
+
+    def test_scroll_document_uses_intrinsic_content_height(self):
+        """The importer grid must not stretch rows across a hard-coded scroll document."""
+        root = Path(__file__).parents[1]
+        source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
+        self.assertIn("final class FlippedStackView", source)
+        self.assertIn("stack.frame.size.height = stack.fittingSize.height", source)
+        self.assertIn("grid.setContentHuggingPriority(.required, for: .vertical)", source)
+        self.assertNotIn("height: 900", source)
+
 
 if __name__ == "__main__":
     unittest.main()

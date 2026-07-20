@@ -1,8 +1,25 @@
 # Teyvat Virtuoso
 
-A tiny native macOS player for Genshin's three-row lyre keyboard. It sends the mapped Mac keys to the focused game window, preserves a prepared score's timing, and presses chord notes together.
+Teyvat Virtuoso is a lightweight native macOS app that converts Standard MIDI files into live performances on Genshin Impact's 21-key instruments. Drop in a MIDI, choose its musical tracks and mapping rules, then play it through GeForce NOW, iPhone Mirroring, or another focused game window.
 
-This is deliberately not a “throw any MIDI at it and hope” app. The game lyre has only 21 natural notes:
+The app is local-first: MIDI analysis, score conversion, saved arrangements, and keyboard playback all happen on your Mac.
+
+## Features
+
+- Native drag-and-drop and file-picker support for `.mid` and `.midi` files
+- Per-track selection with note range and chord-density information
+- Automatic shared-transpose recommendation based on natural-note fit
+- Explicit handling for unavailable black-key notes: skip, snap down, or snap up
+- Adjustable chord-merging tolerance for near-simultaneous source notes
+- Source-tempo preservation with 90%, 100%, and 110% playback choices
+- Real simultaneous key-down events for chords of up to three notes
+- Five-second focus countdown and interruptible playback
+- Local saved-score library under macOS Application Support
+- Bundled public-domain demonstration arrangements
+
+## Instrument layout
+
+Genshin's lyre-style interface exposes three octaves of seven natural notes:
 
 ```text
 High:   Q W E R T Y U
@@ -10,47 +27,88 @@ Middle: A S D F G H J
 Low:    Z X C V B N M
 ```
 
-## What it does
+Teyvat Virtuoso folds source pitches by octaves into this range. Chromatic pitches are never changed invisibly: the selected missing-note policy controls whether they are skipped or moved to the nearest natural note.
 
-- Plays prepared JSON scores with original rests and simultaneous chords.
-- Gives five seconds to focus Genshin / GeForce NOW before playback.
-- Offers 90%, 100%, and 110% timing without changing note order.
-- Stops cleanly before the next event.
-- Includes a MIDI preflight script so unsuitable files are rejected before they become bad arrangements.
+## Requirements
 
-## Build and run
+- macOS 13 or newer
+- Genshin Impact running in a window that accepts normal Mac keyboard input
+- Accessibility permission for Teyvat Virtuoso under **System Settings → Privacy & Security → Accessibility**
+- Apple Command Line Tools when building from source
+
+## Build from source
 
 ```zsh
-cd '/Users/philippsyrov/Desktop/CS Projects/TeyvatVirtuoso'
-python3 -m pip install -r scripts/requirements.txt
+git clone https://github.com/philippsyrov/TeyvatVirtuoso.git
+cd TeyvatVirtuoso
 python3 -m unittest tests/test_play_score.py
 ./scripts/build_app.sh
 open 'build/Teyvat Virtuoso.app'
 ```
 
-Open the lyre in Genshin, click the game during the five-second countdown, then leave it focused. The app sends real key-down and key-up events, so it can play saved chords rather than mouse-clicking one note at a time.
+The build script creates a self-contained native app bundle under `build/`. The running app does not require Python or third-party Swift packages.
 
-## MIDI preflight
+## Usage
 
-```zsh
-python3 scripts/preflight_midi.py '/path/to/song.mid'
+1. Open `Teyvat Virtuoso.app` and grant Accessibility permission if macOS requests it.
+2. Drag a MIDI onto the Import MIDI panel, or choose **Open MIDI…**.
+3. Review the detected tracks. Disable percussion, duplicate orchestration, or parts that make the reduction too dense.
+4. Review the recommended transpose and choose how unavailable chromatic notes should be handled.
+5. Choose a chord merge tolerance and playback timing.
+6. Press **Play Imported**, then focus the open Genshin instrument during the five-second countdown.
+7. If the reduction works well, choose **Save to Library**. Only the generated key-event JSON is saved; the original MIDI is not copied.
+
+## How MIDI conversion works
+
+The native engine parses Standard MIDI headers, track chunks, running status, tempo changes, track names, and note-on events directly in Swift. It then:
+
+1. Filters the selected source tracks.
+2. Applies one shared semitone transposition.
+3. Resolves unavailable chromatic pitches using the selected policy.
+4. Folds notes by octaves into the three-row playable window.
+5. Converts source ticks through the authored tempo map.
+6. Merges nearby onsets into stable chords of no more than three distinct keys.
+7. Emits the same compact JSON event format used by bundled performances.
+
+This process cannot recreate notes the in-game instrument does not have. A high natural-note fit is useful, but recognisable results still depend on choosing the right melody and accompaniment tracks.
+
+## Project structure
+
+```text
+player/
+  GenshinLyrePlayerApp.swift   Native AppKit interface and keyboard playback
+  MidiEngine.swift             Standard MIDI parser and lyre reduction engine
+scores/public-domain/          Redistributable example arrangements
+scripts/build_app.sh           Reproducible local app build
+scripts/preflight_midi.py      Optional detailed command-line MIDI report
+tests/                         Swift engine fixtures and app/build contracts
+docs/                          Mapping, privacy, design, and implementation notes
 ```
 
-The preflight prints the duration, named tracks, best single transposition, white-note fit, and real chord density. A high global fit is only the starting point: the lead melody must also remain recognisable and the accompaniment needs to fit the three rows.
+## Private scores and copyright
 
-## How a MIDI becomes a lyre score
+Downloaded or purchased MIDI files belong under the ignored `scores/private/` folder. Teyvat Virtuoso's local library stores generated score JSON under `~/Library/Application Support/Teyvat Virtuoso/`; it does not place private source files inside the repository or app bundle.
 
-1. Read MIDI tracks and keep their original timestamped note onsets.
-2. Select the meaningful roles — usually melody, accompaniment, and bass — instead of flattening every track.
-3. Choose one shared key shift for the whole arrangement.
-4. Map natural notes into the high, middle, and low rows.
-5. Preserve equal-time notes as chords; near-equal notes may be merged only when the source clearly intended one chord.
-6. Reject overly chromatic arrangements rather than silently changing their identity.
+Only publish MIDI sources or derivative arrangements when you have the right to redistribute them.
 
-## Score rights
+## Development
 
-The repository contains only public-domain sample arrangements. Keep downloaded, purchased, and copyrighted MIDI files under `scores/private/`; that folder is ignored by Git. Do not publish an arrangement unless you have permission to redistribute both the source and your derivative score.
+Run the complete verification before committing:
+
+```zsh
+python3 -m unittest tests/test_play_score.py
+./scripts/build_app.sh
+git diff --check
+```
+
+Contributions should preserve source timing, keep chromatic-note changes explicit, validate every generated key, and include a failing regression test before implementation.
 
 ## Credits
 
-The MIDI workflow was informed by [sabihoshi/GenshinLyreMidiPlayer](https://github.com/sabihoshi/GenshinLyreMidiPlayer), an MIT-licensed Windows project. This macOS implementation is independent; it keeps the useful ideas of track selection, shared transposition, source timing, and near-note merging without using the Windows UI or input stack.
+The workflow was informed by [sabihoshi/GenshinLyreMidiPlayer](https://github.com/sabihoshi/GenshinLyreMidiPlayer), an MIT-licensed Windows project. Teyvat Virtuoso is an independent native macOS implementation and does not use that project's Windows UI or keyboard-input stack.
+
+## License and disclaimer
+
+The application source is available under the [MIT License](LICENSE).
+
+Teyvat Virtuoso is an unofficial fan-made tool. It is not affiliated with, endorsed by, or sponsored by HoYoverse. Genshin Impact and related names are trademarks of their respective owners. Automated input may be restricted by a game's terms or platform rules; users are responsible for deciding where and how to use the app.
