@@ -187,7 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Use the retained window while building its visible content.
         guard let window = self.window else { return }
         // Give the window an ordinary macOS title.
-        window.title = "Genshin Lyre Player"
+        window.title = "Teyvat Virtuoso"
         // Center it so the player can immediately find the picker.
         window.center()
         // Create the simple vertical content layout.
@@ -239,7 +239,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Build the lightweight bold app title.
     private func makeTitle() -> NSTextField {
         // Create a non-editable title label.
-        let label = NSTextField(labelWithString: "Genshin Lyre Player")
+        let label = NSTextField(labelWithString: "Teyvat Virtuoso")
         // Use the standard prominent macOS font.
         label.font = .systemFont(ofSize: 20, weight: .semibold)
         // Return the ready label.

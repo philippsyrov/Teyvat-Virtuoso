@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>Genshin Lyre Player</string>
+  <string>Teyvat Virtuoso</string>
   <key>CFBundleExecutable</key>
-  <string>GenshinLyrePlayer</string>
+  <string>TeyvatVirtuoso</string>
   <key>CFBundleIdentifier</key>
-  <string>com.philippsyrov.genshin-lyre-player</string>
+  <string>com.philippsyrov.teyvat-virtuoso</string>
   <key>CFBundleName</key>
-  <string>Genshin Lyre Player</string>
+  <string>Teyvat Virtuoso</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
