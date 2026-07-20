@@ -112,13 +112,35 @@ class ValidateScoreTests(unittest.TestCase):
     def test_imported_scores_can_be_saved_without_copying_private_midi(self):
         """Local persistence must store generated JSON under Application Support only."""
         root = Path(__file__).parents[1]
-        source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
+        app_source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
+        store_source = (root / "player" / "UserScoreStore.swift").read_text()
         private_docs = (root / "docs" / "PRIVATE_SCORES.md").read_text()
-        self.assertIn("final class UserScoreStore", source)
-        self.assertIn("custom-library.json", source)
-        self.assertIn("Save to Library", source)
-        self.assertIn("applicationSupportDirectory", source)
+        self.assertNotIn("final class UserScoreStore", app_source)
+        self.assertIn("final class UserScoreStore", store_source)
+        self.assertIn("custom-library.json", store_source)
+        self.assertIn("Save to Library", app_source)
+        self.assertIn("applicationSupportDirectory", store_source)
         self.assertIn("original MIDI is never copied", private_docs)
+
+    def test_user_score_store_contract(self):
+        """Favourites and clearing must persist inside an isolated injected root."""
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "store-tests"
+            subprocess.run(
+                [
+                    "swiftc",
+                    str(root / "player" / "MidiEngine.swift"),
+                    str(root / "player" / "UserScoreStore.swift"),
+                    str(root / "tests" / "UserScoreStoreTests.swift"),
+                    "-o",
+                    str(executable),
+                ],
+                check=True,
+            )
+            result = subprocess.run([str(executable)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("UserScoreStoreTests passed", result.stdout)
 
     def test_scroll_document_uses_intrinsic_content_height(self):
         """The importer grid must not stretch rows across a hard-coded scroll document."""

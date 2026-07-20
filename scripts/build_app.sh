@@ -10,7 +10,7 @@ rm -rf "$app_root"
 # Create the standard Finder-recognised bundle layout.
 mkdir -p "$app_root/Contents/MacOS" "$app_root/Contents/Resources"
 # Compile the native AppKit selector and keyboard performer.
-swiftc "$project_root/player/MidiEngine.swift" "$project_root/player/GenshinLyrePlayerApp.swift" -o "$app_root/Contents/MacOS/TeyvatVirtuoso" -framework AppKit -framework CoreGraphics
+swiftc "$project_root/player/MidiEngine.swift" "$project_root/player/UserScoreStore.swift" "$project_root/player/GenshinLyrePlayerApp.swift" -o "$app_root/Contents/MacOS/TeyvatVirtuoso" -framework AppKit -framework CoreGraphics
 # Copy the regular macOS application metadata.
 cp "$project_root/player/Info.plist" "$app_root/Contents/Info.plist"
 # Bundle the open-source-safe public score manifest.
