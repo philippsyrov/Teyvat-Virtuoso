@@ -8,3 +8,5 @@ build/
 scores/private/
 # Keep local Python environments out of the repository.
 .venv/
+# Keep isolated feature worktrees outside the public repository contents.
+.worktrees/
