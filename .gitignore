@@ -1,0 +1,10 @@
+# Keep macOS Finder metadata out of the repository.
+.DS_Store
+# Keep Python bytecode out of the repository.
+__pycache__/
+# Keep locally built app bundles out of the repository.
+build/
+# Keep user-provided and copyrighted MIDI files local-only.
+scores/private/
+# Keep local Python environments out of the repository.
+.venv/

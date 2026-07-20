@@ -1,0 +1,2 @@
+# Parse standard MIDI files for the score-analysis and conversion scripts.
+mido==1.3.3
