@@ -58,8 +58,42 @@ struct MidiTempoChange {
     let microsecondsPerQuarter: Int
 }
 
+// Name the two scale families used by the lightweight key detector.
+enum MusicalMode: String {
+    // Use the ordinary seven-note major scale.
+    case major
+    // Use the ordinary seven-note natural-minor scale.
+    case minor
+}
+
+// Describe one detected tonic and mode without changing the source MIDI.
+struct MusicalKey: Equatable {
+    // Store the tonic as a zero-through-eleven pitch class.
+    let tonic: Int
+    // Store whether the detected profile is major or natural minor.
+    let mode: MusicalMode
+
+    // Present a compact musician-friendly key name in the importer summary.
+    var name: String {
+        // Prefer common flat spellings where they read more naturally.
+        let names = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"]
+        // Combine the normalised tonic with its scale family.
+        return "\(names[positiveModulo(tonic, 12)]) \(mode.rawValue)"
+    }
+
+    // Expose the seven pitch classes belonging to the detected scale.
+    var pitchClasses: Set<Int> {
+        // Select the major or natural-minor interval pattern from the tonic.
+        let intervals = mode == .major ? [0, 2, 4, 5, 7, 9, 11] : [0, 2, 3, 5, 7, 8, 10]
+        // Rotate every interval into an absolute pitch class.
+        return Set(intervals.map { positiveModulo(tonic + $0, 12) })
+    }
+}
+
 // Make the handling of unavailable black-key notes an explicit user choice.
 enum MissingNotePolicy: String, CaseIterable {
+    // Infer a key and preserve local melodic motion when choosing a natural neighbour.
+    case smart
     // Drop chromatic notes and preserve only directly playable source pitches.
     case skip
     // Move a chromatic note downward to the closest natural pitch.
@@ -341,16 +375,78 @@ struct MidiDocument {
         return naturalNoteFit(notes: selectedNotes, transpose: transpose)
     }
 
+    // Estimate one major or natural-minor key from selected, transposed note onsets.
+    func detectedKey(transpose: Int, enabledTrackIndexes: Set<Int>) -> MusicalKey? {
+        // Keep only note onsets that will participate in this imported performance.
+        let selectedNotes = notes.filter { enabledTrackIndexes.contains($0.trackIndex) }
+        // Avoid inventing a key for an empty track selection.
+        guard !selectedNotes.isEmpty else { return nil }
+        // Count how often each transposed pitch class appears.
+        var histogram = Array(repeating: 0.0, count: 12)
+        for note in selectedNotes {
+            histogram[positiveModulo(note.note + transpose, 12)] += 1
+        }
+        // Use established tonal profiles as compact major/minor templates.
+        let majorProfile = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
+        let minorProfile = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
+        // Evaluate major keys first, then minor keys, so exact ties remain deterministic.
+        let candidates = MusicalMode.allDetectionCandidates
+        // Keep the first candidate unless a later profile scores strictly higher.
+        var bestKey = candidates[0]
+        var bestScore = -Double.infinity
+        for candidate in candidates {
+            // Choose the correct unrotated profile for this candidate's mode.
+            let profile = candidate.mode == .major ? majorProfile : minorProfile
+            // Rotate the profile around the candidate tonic and compute a weighted dot product.
+            let score = (0..<12).reduce(0.0) { partial, pitchClass in
+                partial + histogram[pitchClass] * profile[positiveModulo(pitchClass - candidate.tonic, 12)]
+            }
+            // Replace the winner only for a strictly better score.
+            if score > bestScore {
+                bestKey = candidate
+                bestScore = score
+            }
+        }
+        // Return the stable highest-scoring tonal profile.
+        return bestKey
+    }
+
     // Reduce selected source tracks into safe, source-timed Genshin lyre events.
     func makeScore(options: MidiImportOptions) -> [ImportedScoreEvent] {
+        // Detect one shared musical key only when Smart mapping needs it.
+        let musicalKey = options.missingNotePolicy == .smart
+            ? detectedKey(transpose: options.transpose, enabledTrackIndexes: options.enabledTrackIndexes)
+            : nil
+        // Keep the latest completed onset as melodic context for each source track.
+        var previousByTrack: [Int: (source: Int, mapped: Int)] = [:]
+        // Hold the most recent onset separately so simultaneous chord notes do not become a fake melody.
+        var pendingByTrack: [Int: (tick: Int, source: Int, mapped: Int)] = [:]
         // Retain source order as a deterministic tie-breaker at equal timestamps.
         let selected = notes.enumerated().compactMap { index, source -> (Double, Int, String)? in
             // Ignore every unchecked source track.
             guard options.enabledTrackIndexes.contains(source.trackIndex) else { return nil }
-            // Apply the shared key change and explicit missing-note policy.
-            guard let key = lyreKey(for: source.note + options.transpose, policy: options.missingNotePolicy) else {
+            // Promote the prior completed onset when this track advances to a later tick.
+            if let pending = pendingByTrack[source.trackIndex], source.tick > pending.tick {
+                previousByTrack[source.trackIndex] = (pending.source, pending.mapped)
+            }
+            // Apply the shared transpose before resolving an unavailable pitch.
+            let shiftedPitch = source.note + options.transpose
+            // Read only the previous completed onset as local melodic context.
+            let previous = previousByTrack[source.trackIndex]
+            // Resolve this pitch through the selected legacy or Smart policy.
+            guard let mappedPitch = resolvedPitch(
+                shiftedPitch,
+                policy: options.missingNotePolicy,
+                key: musicalKey,
+                previousSourcePitch: previous?.source,
+                previousMappedPitch: previous?.mapped
+            ) else {
                 return nil
             }
+            // Remember the latest note at this onset for the next strictly later tick.
+            pendingByTrack[source.trackIndex] = (source.tick, shiftedPitch, mappedPitch)
+            // Fold the resolved natural pitch onto one of the 21 physical keys.
+            guard let key = lyreKey(forResolvedPitch: mappedPitch) else { return nil }
             // Convert the exact source tick using the document's tempo map.
             let onset = milliseconds(forTick: source.tick, ticksPerQuarter: ticksPerQuarter, tempos: tempos)
             // Return the sortable onset, source order, and mapped physical key.
@@ -401,23 +497,60 @@ struct MidiDocument {
     }
 }
 
-// Map one shifted MIDI pitch onto the three visible natural-note lyre rows.
-private func lyreKey(for sourcePitch: Int, policy: MissingNotePolicy) -> String? {
+// Build the fixed candidate order used to resolve exact key-profile ties.
+private extension MusicalMode {
+    // List C major through B major, followed by C minor through B minor.
+    static var allDetectionCandidates: [MusicalKey] {
+        // Preserve major-before-minor ordering as part of the deterministic contract.
+        return (0..<12).map { MusicalKey(tonic: $0, mode: .major) }
+            + (0..<12).map { MusicalKey(tonic: $0, mode: .minor) }
+    }
+}
+
+// Resolve one shifted source pitch to a playable natural pitch or an explicit skip.
+private func resolvedPitch(
+    _ sourcePitch: Int,
+    policy: MissingNotePolicy,
+    key: MusicalKey?,
+    previousSourcePitch: Int?,
+    previousMappedPitch: Int?
+) -> Int? {
     // Define the seven natural pitch classes used by every row.
     let naturalClasses: Set<Int> = [0, 2, 4, 5, 7, 9, 11]
-    // Begin from the globally shifted source pitch.
-    var pitch = sourcePitch
-    // Resolve unavailable black-key pitches only through the user's explicit policy.
-    if !naturalClasses.contains(positiveModulo(pitch, 12)) {
-        switch policy {
-        case .skip:
-            return nil
-        case .down:
-            repeat { pitch -= 1 } while !naturalClasses.contains(positiveModulo(pitch, 12))
-        case .up:
-            repeat { pitch += 1 } while !naturalClasses.contains(positiveModulo(pitch, 12))
+    // Preserve every already-playable natural pitch exactly.
+    guard !naturalClasses.contains(positiveModulo(sourcePitch, 12)) else { return sourcePitch }
+    // Resolve black-key pitches through the selected explicit policy.
+    switch policy {
+    case .skip:
+        return nil
+    case .down:
+        return sourcePitch - 1
+    case .up:
+        return sourcePitch + 1
+    case .smart:
+        // Every chromatic piano pitch sits exactly between two natural neighbours.
+        let candidates = [sourcePitch - 1, sourcePitch + 1]
+        // Prefer scale membership, then contour fidelity, then the lower deterministic tie-break.
+        return candidates.max { left, right in
+            // Reward a candidate belonging to the detected major or minor scale.
+            let leftScale = key?.pitchClasses.contains(positiveModulo(left, 12)) == true ? 1 : 0
+            let rightScale = key?.pitchClasses.contains(positiveModulo(right, 12)) == true ? 1 : 0
+            if leftScale != rightScale { return leftScale < rightScale }
+            // Measure interval distortion only when a prior completed onset exists.
+            let sourceInterval = previousSourcePitch.map { sourcePitch - $0 }
+            let leftError = sourceInterval.flatMap { interval in previousMappedPitch.map { abs((left - $0) - interval) } } ?? 0
+            let rightError = sourceInterval.flatMap { interval in previousMappedPitch.map { abs((right - $0) - interval) } } ?? 0
+            if leftError != rightError { return leftError > rightError }
+            // `max` keeps the left candidate when both scores tie, producing downward resolution.
+            return false
         }
     }
+}
+
+// Fold one resolved natural MIDI pitch onto the three visible lyre rows.
+private func lyreKey(forResolvedPitch sourcePitch: Int) -> String? {
+    // Begin from the already-resolved natural source pitch.
+    var pitch = sourcePitch
     // Fold low pitches upward by octaves without changing their pitch class.
     while pitch < 48 { pitch += 12 }
     // Fold high pitches downward by octaves into the top visible row.

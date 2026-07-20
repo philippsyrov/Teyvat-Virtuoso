@@ -147,6 +147,58 @@ struct MidiEngineTests {
         // Apply one shared transpose before pitch-class mapping.
         expect(chromaticDocument.makeScore(options: MidiImportOptions(enabledTrackIndexes: [0], transpose: 1, missingNotePolicy: .skip, mergeToleranceMs: 0)).first?.keys == ["s"], "expected shared transpose")
 
+        // Build a strong D-major pitch-class profile containing one unavailable C-sharp.
+        let dMajorDocument = MidiDocument(
+            tracks: [MidiTrackInfo(index: 0, name: "D major", noteCount: 10, minimumNote: 62, maximumNote: 73, chordOnsets: 0)],
+            durationMs: 500,
+            bestTranspose: 0,
+            ticksPerQuarter: 480,
+            notes: [62, 66, 69, 62, 67, 64, 71, 62, 69, 73].enumerated().map {
+                MidiNoteOn(trackIndex: 0, tick: $0.offset * 60, note: $0.element)
+            },
+            tempos: [MidiTempoChange(tick: 0, microsecondsPerQuarter: 500_000)]
+        )
+        // Detect the selected source as D major before resolving missing notes.
+        expect(dMajorDocument.detectedKey(transpose: 0, enabledTrackIndexes: [0])?.name == "D major", "expected D-major detection")
+        // Prefer D over C for C-sharp because D belongs to the detected D-major scale.
+        let smartDMajor = dMajorDocument.makeScore(options: MidiImportOptions(enabledTrackIndexes: [0], transpose: 0, missingNotePolicy: .smart, mergeToleranceMs: 0))
+        expect(smartDMajor.last?.keys == ["w"], "expected D-major C-sharp to resolve upward to D")
+
+        // Build a strong C-natural-minor profile containing repeated E-flat notes.
+        let cMinorDocument = MidiDocument(
+            tracks: [MidiTrackInfo(index: 0, name: "C minor", noteCount: 8, minimumNote: 58, maximumNote: 67, chordOnsets: 0)],
+            durationMs: 500,
+            bestTranspose: 0,
+            ticksPerQuarter: 480,
+            notes: [60, 63, 67, 60, 62, 63, 67, 58].enumerated().map {
+                MidiNoteOn(trackIndex: 0, tick: $0.offset * 60, note: $0.element)
+            },
+            tempos: [MidiTempoChange(tick: 0, microsecondsPerQuarter: 500_000)]
+        )
+        // Detect the selected source as C minor.
+        expect(cMinorDocument.detectedKey(transpose: 0, enabledTrackIndexes: [0])?.name == "C minor", "expected C-minor detection")
+        // Resolve the first E-flat downward to scale-member D instead of non-scale E.
+        let smartCMinor = cMinorDocument.makeScore(options: MidiImportOptions(enabledTrackIndexes: [0], transpose: 0, missingNotePolicy: .smart, mergeToleranceMs: 0))
+        expect(smartCMinor[1].keys == ["s"], "expected C-minor E-flat to resolve downward to D")
+
+        // Build a C-major melody whose final two chromatic notes require a contour tie-break.
+        let contourDocument = MidiDocument(
+            tracks: [MidiTrackInfo(index: 0, name: "Contour", noteCount: 8, minimumNote: 60, maximumNote: 67, chordOnsets: 0)],
+            durationMs: 700,
+            bestTranspose: 0,
+            ticksPerQuarter: 480,
+            notes: [60, 64, 67, 60, 64, 67, 61, 63].enumerated().map {
+                MidiNoteOn(trackIndex: 0, tick: $0.offset * 60, note: $0.element)
+            },
+            tempos: [MidiTempoChange(tick: 0, microsecondsPerQuarter: 500_000)]
+        )
+        // Both D and E belong to C major, so preserve the source two-semitone C-sharp-to-D-sharp motion as C-to-D.
+        let smartContour = contourDocument.makeScore(options: MidiImportOptions(enabledTrackIndexes: [0], transpose: 0, missingNotePolicy: .smart, mergeToleranceMs: 0))
+        expect(Array(smartContour.suffix(2)).map(\.keys) == [["a"], ["s"]], "expected contour-aware chromatic tie-break")
+
+        // Return no detected key when every musical track is disabled.
+        expect(contourDocument.detectedKey(transpose: 0, enabledTrackIndexes: []).map { _ in false } ?? true, "expected no key for no enabled notes")
+
         // Fold pitches by octaves into the playable three-row window.
         let foldedDocument = MidiDocument(
             tracks: [MidiTrackInfo(index: 0, name: "Wide", noteCount: 2, minimumNote: 36, maximumNote: 96, chordOnsets: 1)],
