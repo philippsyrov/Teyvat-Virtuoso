@@ -1,8 +1,8 @@
 # Teyvat Virtuoso
 
-Teyvat Virtuoso is a lightweight native macOS app that converts Standard MIDI files into live performances on Genshin Impact's 21-key instruments. Drop in a MIDI, choose its musical tracks and mapping rules, then play it through GeForce NOW, iPhone Mirroring, or another focused game window.
+Teyvat Virtuoso is a lightweight native macOS companion for Genshin Impact players who stream the game through NVIDIA GeForce NOW. It converts Standard MIDI files into live performances on Genshin's 21-key instruments: drop in a MIDI, choose its musical tracks and mapping rules, then focus the GeForce NOW window and let the app perform it.
 
-The app is local-first: MIDI analysis, score conversion, saved arrangements, and keyboard playback all happen on your Mac.
+The app also works with other focused game windows that accept normal Mac keyboard input, including compatible iPhone Mirroring setups. It is local-first: MIDI analysis, score conversion, saved arrangements, and keyboard playback all happen on your Mac.
 
 ## Features
 
@@ -32,7 +32,7 @@ Teyvat Virtuoso folds source pitches by octaves into this range. Chromatic pitch
 ## Requirements
 
 - macOS 13 or newer
-- Genshin Impact running in a window that accepts normal Mac keyboard input
+- Genshin Impact through NVIDIA GeForce NOW for macOS, or another game window that accepts normal Mac keyboard input
 - Accessibility permission for Teyvat Virtuoso under **System Settings → Privacy & Security → Accessibility**
 - Apple Command Line Tools when building from source
 
@@ -58,6 +58,8 @@ The build script creates a self-contained native app bundle under `build/`. The 
 6. Press **Play Imported**, then focus the open Genshin instrument during the five-second countdown.
 7. If the reduction works well, choose **Save to Library**. Only the generated key-event JSON is saved; the original MIDI is not copied.
 
+If keyboard playback stops after replacing or rebuilding the app, toggle Teyvat Virtuoso off and on again under **System Settings → Privacy & Security → Accessibility**, then reopen it. macOS can retain an approval for an older local build even when the app name is unchanged.
+
 ## How MIDI conversion works
 
 The native engine parses Standard MIDI headers, track chunks, running status, tempo changes, track names, and note-on events directly in Swift. It then:
@@ -70,7 +72,7 @@ The native engine parses Standard MIDI headers, track chunks, running status, te
 6. Merges nearby onsets into stable chords of no more than three distinct keys.
 7. Emits the same compact JSON event format used by bundled performances.
 
-This process cannot recreate notes the in-game instrument does not have. A high natural-note fit is useful, but recognisable results still depend on choosing the right melody and accompaniment tracks.
+This process cannot recreate notes the in-game instrument does not have. A high natural-note fit is useful, but recognisable results still depend on choosing the right melody and accompaniment tracks. The current converter intentionally favours predictable, playable reductions over silently inventing notes that were not present in the source.
 
 ## Project structure
 

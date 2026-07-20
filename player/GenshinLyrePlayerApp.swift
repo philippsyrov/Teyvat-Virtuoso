@@ -221,6 +221,11 @@ final class PlaybackController {
 
     // Begin an already-generated score after a five-second focus window.
     func play(score: [AppScoreEvent], title: String, at speed: Double) {
+        // Ask macOS for Accessibility access before pretending playback can send keys.
+        guard hasAccessibilityAccess else {
+            setStatus("Accessibility permission is required. Enable Teyvat Virtuoso in System Settings, then reopen the app.")
+            return
+        }
         // Reject unsafe generated or saved events before any keyboard access.
         guard isSafe(score) else {
             setStatus("Unsafe or empty score: \(title).")
@@ -248,6 +253,14 @@ final class PlaybackController {
             // Confirm a normal ending only after the final note.
             self.setStatus("Performance complete: \(title).")
         }
+    }
+
+    // Check the actual process identity and let macOS show its standard permission prompt.
+    private var hasAccessibilityAccess: Bool {
+        // Use Apple's documented prompt option so the correct rebuilt app appears in Privacy settings.
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        // Trust only the current signed app process, never a stale bundle with the same display name.
+        return AXIsProcessTrustedWithOptions(options)
     }
 
     // Request a stop before the next key group.
