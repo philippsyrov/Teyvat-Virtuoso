@@ -5,24 +5,6 @@
       "title": "Aloha ʻOe",
       "subtitle": "Queen Liliʻuokalani · full source-timed lyre arrangement",
       "file": "aloha_oe_full_2m24s_lyre.json"
-    },
-    {
-      "id": "beautiful_dreamer",
-      "title": "Beautiful Dreamer",
-      "subtitle": "Stephen Foster · full piano-and-flute MIDI performance",
-      "file": "beautiful_dreamer_lyre.json"
-    },
-    {
-      "id": "sakura_sakura",
-      "title": "Sakura Sakura",
-      "subtitle": "Traditional Japanese folk song · natural-note arrangement",
-      "file": "sakura_sakura_lyre.json"
-    },
-    {
-      "id": "red_river_valley",
-      "title": "Red River Valley",
-      "subtitle": "Traditional folk song · natural-note arrangement",
-      "file": "red_river_valley_lyre.json"
     }
   ]
 }

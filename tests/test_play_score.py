@@ -1,6 +1,7 @@
 """Tests for the offline Genshin lyre score player."""
 
 import json
+import hashlib
 import subprocess
 import tempfile
 import unittest
@@ -31,14 +32,16 @@ class ValidateScoreTests(unittest.TestCase):
         """The native picker must list every finished, source-backed lyre score."""
         root = Path(__file__).parents[1]
         library = json.loads((root / "scores" / "public-domain" / "library.json").read_text())
+        self.assertEqual([entry["id"] for entry in library["songs"]], ["aloha_oe"])
+
+    def test_aloha_score_remains_unchanged(self):
+        """Library cleanup must never alter the proven Aloha arrangement."""
+        root = Path(__file__).parents[1]
+        score = root / "scores" / "public-domain" / "aloha_oe_full_2m24s_lyre.json"
+        self.assertEqual(len(json.loads(score.read_text())), 506)
         self.assertEqual(
-            [entry["id"] for entry in library["songs"]],
-            [
-                "aloha_oe",
-                "beautiful_dreamer",
-                "sakura_sakura",
-                "red_river_valley",
-            ],
+            hashlib.sha256(score.read_bytes()).hexdigest(),
+            "8226314106d2914858017c4d8cae44e977af6ef6c54e54962f6d1ddd111e7117",
         )
 
     def test_every_library_entry_has_a_valid_natural_note_score(self):
@@ -108,6 +111,17 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("Snap black keys up", source)
         self.assertIn("Merge nearby notes", source)
         self.assertIn("play(score:", source)
+
+    def test_native_app_exposes_smart_mapping_and_personal_library_controls(self):
+        """The visible app must default to Smart and expose favourites plus safe clearing."""
+        root = Path(__file__).parents[1]
+        source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
+        self.assertIn("Smart — key-aware", source)
+        self.assertIn("toggleFavorite", source)
+        self.assertIn("Clear Imported Library…", source)
+        self.assertIn("NSAlert", source)
+        self.assertIn("userScoreStore.clear()", source)
+        self.assertIn("detectedKey", source)
 
     def test_imported_scores_can_be_saved_without_copying_private_midi(self):
         """Local persistence must store generated JSON under Application Support only."""
