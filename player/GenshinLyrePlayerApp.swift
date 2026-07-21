@@ -23,6 +23,27 @@ final class FlippedStackView: NSStackView {
     override var isFlipped: Bool { true }
 }
 
+// Keep a scroll page's document as wide as the live visible pane during window resizing.
+final class ResponsivePageScrollView: NSScrollView {
+    // Recalculate the page document after AppKit lays out the changed clip view.
+    override func layout() {
+        // Let AppKit complete its normal scroll-view layout first.
+        super.layout()
+        // Stop safely before the page stack exists during initial construction.
+        guard let documentView else { return }
+        // Match the document width to the visible pane so labels can wrap instead of clipping.
+        documentView.frame.size.width = contentView.bounds.width
+        // Recalculate height after the new width changes wrapped label heights.
+        documentView.frame.size.height = documentView.fittingSize.height
+    }
+}
+
+// Remove the split-view separator while preserving the normal sidebar-and-content layout.
+final class BorderlessSplitView: NSSplitView {
+    // Give AppKit no drawable divider width between the two navigation panes.
+    override var dividerThickness: CGFloat { 0 }
+}
+
 // Present one obvious target for Finder MIDI files.
 final class MidiDropView: NSView {
     // Deliver a validated dropped MIDI URL to the app delegate.
@@ -112,21 +133,25 @@ final class MidiDropView: NSView {
 final class PlaybackController {
     // Let the window display status changes on the main queue.
     var onStatus: ((String) -> Void)?
+    // Let card rows redraw their primary action when playback starts or stops.
+    var onPlaybackChange: ((String?) -> Void)?
     // Protect cancellation state shared by the UI and playback queue.
     private let lock = NSLock()
     // Remember whether Stop interrupted the active performance.
     private var cancelled = false
+    // Identify the active card while preventing an older queue from clearing a newer playback state.
+    private var activeGeneration = 0
 
     // Load and begin one bundled score after the normal focus countdown.
-    func play(_ song: Song, at speed: Double) {
+    func play(_ song: Song, id: String, at speed: Double) {
         // Resolve the read-only bundled score before entering the common player.
         guard let score = loadBundledScore(song) else { return }
         // Use the same in-memory playback path as imported MIDI scores.
-        play(score: score, title: song.title, at: speed)
+        play(score: score, title: song.title, id: id, at: speed)
     }
 
     // Begin an already-generated score after a five-second focus window.
-    func play(score: [AppScoreEvent], title: String, at speed: Double) {
+    func play(score: [AppScoreEvent], title: String, id: String, at speed: Double) {
         // Ask macOS for Accessibility access before pretending playback can send keys.
         guard hasAccessibilityAccess else {
             setStatus("Accessibility permission is required. Enable Teyvat Virtuoso in System Settings, then reopen the app.")
@@ -137,10 +162,14 @@ final class PlaybackController {
             setStatus("Unsafe or empty score: \(title).")
             return
         }
-        // Clear a prior stop request before launching the new score.
+        // Clear a prior stop request and reserve one generation for this new score.
         lock.lock()
         cancelled = false
+        activeGeneration += 1
+        let generation = activeGeneration
         lock.unlock()
+        // Mark the exact card active only after accessibility and score validation succeed.
+        setActiveID(id)
         // Tell the user exactly when and how fast playback will begin.
         setStatus("Open the instrument and click GeForce NOW — \(title) starts in 5 seconds at \(String(format: "%.0f", speed * 100))%.")
         // Move waiting and keyboard events off the app's UI loop.
@@ -148,16 +177,24 @@ final class PlaybackController {
             // Stop if the controller was released.
             guard let self else { return }
             // Give the user time to focus Genshin or GeForce NOW.
-            guard self.wait(seconds: 5) else { return }
+            guard self.wait(seconds: 5) else {
+                self.clearActiveID(for: generation)
+                return
+            }
             // Play every saved event in chronological order.
             for event in score {
                 // Keep every rest interruptible by Stop.
-                guard self.wait(seconds: Double(event.delayMs) / 1_000 / speed) else { return }
+                guard self.wait(seconds: Double(event.delayMs) / 1_000 / speed) else {
+                    self.clearActiveID(for: generation)
+                    return
+                }
                 // Deliver all event keys as one true chord.
                 self.playChord(event.keys)
             }
             // Confirm a normal ending only after the final note.
             self.setStatus("Performance complete: \(title).")
+            // Return the active card to Play only when this remains the newest queue.
+            self.clearActiveID(for: generation)
         }
     }
 
@@ -174,7 +211,10 @@ final class PlaybackController {
         // Set the shared cancellation flag under its lock.
         lock.lock()
         cancelled = true
+        activeGeneration += 1
         lock.unlock()
+        // Return every card to its ready action immediately.
+        setActiveID(nil)
         // Update the window immediately.
         setStatus("Playback stopped.")
     }
@@ -257,23 +297,73 @@ final class PlaybackController {
         // Ensure AppKit controls are touched only on the main thread.
         DispatchQueue.main.async { self.onStatus?(text) }
     }
+
+    // Publish a card identity change through AppKit's main queue.
+    private func setActiveID(_ id: String?) {
+        // Ensure row rebuilding always runs on the main thread.
+        DispatchQueue.main.async { self.onPlaybackChange?(id) }
+    }
+
+    // Clear an old queue only when no newer score has replaced it.
+    private func clearActiveID(for generation: Int) {
+        // Check the generation under the same lock used by Stop.
+        lock.lock()
+        let isCurrent = generation == activeGeneration
+        lock.unlock()
+        // Leave a newer card alone when an older queue finishes late.
+        if isCurrent { setActiveID(nil) }
+    }
+}
+
+// Name the three separate jobs exposed by the native source-list sidebar.
+private enum NavigationDestination: Int, CaseIterable {
+    // Browse attributed arrangements without mixing them into personal storage.
+    case community
+    // Play and manage bundled or explicitly saved personal performances.
+    case library
+    // Analyse and reduce one local Standard MIDI file.
+    case importMidi
+
+    // Present concise sidebar labels in stable order.
+    var title: String {
+        // Match each destination to its user-facing name.
+        switch self {
+        case .community: return "Community Collection"
+        case .library: return "My Library"
+        case .importMidi: return "Import MIDI"
+        }
+    }
+
+    // Use familiar system symbols without shipping decorative assets.
+    var symbolName: String {
+        // Match discovery, personal music, and local import concepts.
+        switch self {
+        case .community: return "music.note.list"
+        case .library: return "heart.text.square"
+        case .importMidi: return "square.and.arrow.down"
+        }
+    }
 }
 
 // Build and own the complete native app window.
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource, NSTableViewDelegate {
     // Retain the live app window for the full application lifetime.
     private var window: NSWindow?
-    // Store the bundled picker library.
+    // Store only bundled public-domain and user-saved personal performances.
     private var songs: [Song] = []
+    // Store metadata-only community entries separately from the personal library.
+    private var communityCatalog: [CommunityCatalogEntry] = []
+    // Store the search-filtered community rows currently visible.
+    private var visibleCommunityEntries: [CommunityCatalogEntry] = []
     // Store the currently imported MIDI document and its source filename.
     private var importedDocument: MidiDocument?
     private var importedTitle = "Imported MIDI"
     private var importedFilename = "Imported MIDI"
     // Keep source track index to checkbox mappings.
     private var trackButtons: [Int: NSButton] = [:]
-    // Store the native song selector.
+    // Store the native personal-song selector.
     private let songPicker = NSPopUpButton(frame: .zero, pullsDown: false)
-    // Store the timing selector used for live imports, bundled songs, and explicit saved-speed updates.
+    // Store the timing selector used for live imports and their automatically saved speed.
     private let speedPicker = NSPopUpButton(frame: .zero, pullsDown: false)
     // Store MIDI reduction controls.
     private let transposePicker = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -282,29 +372,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Store visible descriptions and live status.
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let importSummaryLabel = NSTextField(wrappingLabelWithString: "No MIDI loaded yet.")
-    private let statusLabel = NSTextField(wrappingLabelWithString: "Choose a saved song or import a MIDI.")
+    private let statusLabel = NSTextField(wrappingLabelWithString: "Ready.")
+    // Retain the native sidebar and one replaceable content host.
+    private let sidebarTable = NSTableView()
+    private let contentContainer = NSView()
+    // Retain the community search and row stack for local filtering and cache refreshes.
+    private let communitySearchField = NSSearchField()
+    private let communityRowsStack = NSStackView()
+    // Retain the personal-library card stack so hearts and playback state can redraw in place.
+    private let libraryRowsStack = NSStackView()
+    // Retain the collapsed advanced MIDI controls outside the main import hierarchy.
+    private let advancedMappingStack = NSStackView()
+    // Retain the advanced disclosure so its complete title cannot be compressed into an ellipsis.
+    private lazy var advancedMappingDisclosure = NSButton(title: "Advanced mapping", target: self, action: #selector(toggleAdvancedMapping(_:)))
     // Store the dynamic source track checkbox list.
     private let tracksStack = NSStackView()
     // Store actions whose enabled state follows the imported document.
-    private lazy var playImportedButton = NSButton(title: "Play Imported — 5 second focus time", target: self, action: #selector(playImported))
+    private lazy var playImportedButton = NSButton(title: "Preview — 5 second focus time", target: self, action: #selector(playImported))
     // Store the generated-score persistence action.
-    private lazy var saveImportedButton = NSButton(title: "Save to Library", target: self, action: #selector(saveImported))
+    private lazy var saveImportedButton = NSButton(title: "Save to My Library", target: self, action: #selector(saveImported))
     // Store the selected local song's persistent favourite action.
     private lazy var favoriteButton = NSButton(title: "♡ Favourite", target: self, action: #selector(toggleFavorite))
-    // Store the action that assigns the visible timing to one existing local song.
-    private lazy var savedSpeedButton = NSButton(title: "Set Saved Speed", target: self, action: #selector(setSavedSpeed))
     // Own the local Application Support score store.
     private let userScoreStore = UserScoreStore()
+    // Own the separate attributed community cache.
+    private let communityScoreStore = CommunityScoreStore()
+    // Own persistent favourite identities shared by every visible score collection.
+    private let favoriteStore = FavoriteStore()
     // Own the cancellable native keyboard player.
     private let player = PlaybackController()
+    // Remember the one active card whose primary action should read Stop.
+    private var activePlaybackID: String?
 
     // Construct the app's single native window at launch.
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Load public bundled scores before filling the selector.
+        // Migrate earlier local-only heart state before rendering shared favourite cards.
+        migrateLegacyFavorites()
+        // Load personal and metadata-only community libraries before constructing pages.
         songs = loadLibrary()
-        // Create a useful instrument-workbench-sized window.
+        communityCatalog = loadCommunityCatalog()
+        visibleCommunityEntries = communityCatalog
+        // Configure controls exactly once before pages retain them.
+        configureLibraryPicker()
+        configureImportControls()
+        // Create a wider music-player window with room for a real sidebar.
         self.window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 760),
+            contentRect: NSRect(x: 0, y: 0, width: 940, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -313,95 +426,625 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let window = self.window else { return }
         // Give the window the project identity.
         window.title = "Teyvat Virtuoso"
+        // Remove the bright native separator so the title bar flows into the dark app content.
+        window.titlebarSeparatorStyle = .none
         // Enforce a minimum size that keeps controls readable.
-        window.minSize = NSSize(width: 660, height: 650)
+        window.minSize = NSSize(width: 780, height: 600)
         // Centre the first launch.
         window.center()
-        // Build the vertically scrollable workbench content.
-        window.contentView = makeContentView()
+        // Give the native navigation shell an explicit edge-pinned window host.
+        let windowHost = NSView()
+        let rootView = makeContentView()
+        rootView.translatesAutoresizingMaskIntoConstraints = false
+        windowHost.addSubview(rootView)
+        NSLayoutConstraint.activate([
+            rootView.leadingAnchor.constraint(equalTo: windowHost.leadingAnchor),
+            rootView.trailingAnchor.constraint(equalTo: windowHost.trailingAnchor),
+            rootView.topAnchor.constraint(equalTo: windowHost.topAnchor),
+            rootView.bottomAnchor.constraint(equalTo: windowHost.bottomAnchor),
+        ])
+        window.contentView = windowHost
         // Reflect playback state in the bottom status line.
         player.onStatus = { [weak self] text in self?.statusLabel.stringValue = text }
+        // Rebuild only lightweight visible cards whenever their primary action changes state.
+        player.onPlaybackChange = { [weak self] id in
+            self?.activePlaybackID = id
+            self?.rebuildCommunityRows()
+            self?.rebuildLibraryRows()
+        }
         // Show and activate the app.
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // Build the full scrollable workbench UI.
+    // Build a sidebar shell with one visible destination and a persistent footer.
     private func makeContentView() -> NSView {
-        // Create the outer scroll view for long track lists and smaller screens.
-        let scroll = NSScrollView()
-        // Show a vertical scroller only when needed.
-        scroll.hasVerticalScroller = true
-        // Hide the decorative border around the full content.
-        scroll.borderType = .noBorder
-        // Create one main vertical layout stack.
-        let stack = FlippedStackView()
-        // Lay sections from top to bottom.
-        stack.orientation = .vertical
-        // Stretch wide controls to the available content width.
-        stack.alignment = .leading
-        // Use consistent macOS spacing between related controls.
-        stack.spacing = 12
-        // Add comfortable content margins.
-        stack.edgeInsets = NSEdgeInsets(top: 24, left: 28, bottom: 28, right: 28)
-        // Give the document view a stable width; its height will come from intrinsic content.
-        stack.frame = NSRect(x: 0, y: 0, width: 700, height: 0)
+        // Use an explicitly constrained root so the split view can never collapse to intrinsic width.
+        let root = NSView()
+        // Split navigation from the active page without drawing a dark rule between them.
+        let splitView = BorderlessSplitView()
+        splitView.isVertical = true
+        splitView.translatesAutoresizingMaskIntoConstraints = false
+        // Build and retain the source-list sidebar.
+        let sidebar = makeSidebar()
+        sidebar.translatesAutoresizingMaskIntoConstraints = false
+        sidebar.widthAnchor.constraint(equalToConstant: 205).isActive = true
+        // Let the content host fill all remaining split-view space.
+        contentContainer.translatesAutoresizingMaskIntoConstraints = false
+        contentContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 560).isActive = true
+        splitView.addArrangedSubview(sidebar)
+        splitView.addArrangedSubview(contentContainer)
+        // Keep playback status and Stop visible across every destination.
+        let footer = makePersistentFooter()
+        root.addSubview(splitView)
+        root.addSubview(footer)
+        // Pin the navigation and footer to every edge instead of relying on intrinsic stack width.
+        NSLayoutConstraint.activate([
+            splitView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            splitView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            splitView.topAnchor.constraint(equalTo: root.topAnchor),
+            splitView.bottomAnchor.constraint(equalTo: footer.topAnchor),
+            footer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+        ])
+        // Select Community Collection on first launch.
+        sidebarTable.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        showDestination(.community)
+        return root
+    }
 
-        // Add project title and purpose.
-        stack.addArrangedSubview(makeHeading("Teyvat Virtuoso", size: 24))
-        stack.addArrangedSubview(makeSecondaryLabel("Native MIDI-to-instrument performances for Genshin Impact on macOS."))
-        // Add the prepared-score library section.
-        stack.addArrangedSubview(makeHeading("Saved performances", size: 15))
-        configureLibraryPicker()
-        stack.addArrangedSubview(songPicker)
-        subtitleLabel.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(subtitleLabel)
-        stack.addArrangedSubview(makeSavedButtons())
-        // Separate the library from the live importer.
-        stack.addArrangedSubview(makeSeparator())
-        // Add the native MIDI importer section.
-        stack.addArrangedSubview(makeHeading("Import MIDI", size: 18))
-        stack.addArrangedSubview(makeSecondaryLabel("Your MIDI stays local. Choose its tracks and mapping before any keys are sent."))
-        // Add a visible native drag destination.
-        let dropView = MidiDropView(frame: NSRect(x: 0, y: 0, width: 650, height: 92))
+    // Build the dignified native source-list sidebar.
+    private func makeSidebar() -> NSView {
+        // Put the source list inside a normal scrolling sidebar surface.
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = false
+        scroll.borderType = .noBorder
+        scroll.drawsBackground = true
+        scroll.backgroundColor = .windowBackgroundColor
+        // Use one simple column because icons and labels belong to each row view.
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Navigation"))
+        column.width = 190
+        sidebarTable.addTableColumn(column)
+        sidebarTable.headerView = nil
+        sidebarTable.style = .sourceList
+        sidebarTable.rowSizeStyle = .medium
+        sidebarTable.dataSource = self
+        sidebarTable.delegate = self
+        scroll.documentView = sidebarTable
+        return scroll
+    }
+
+    // Keep the playback state and emergency stop visible below every page.
+    private func makePersistentFooter() -> NSView {
+        // Use a subtle material-backed footer instead of another full page section.
+        let footer = NSVisualEffectView()
+        footer.material = .headerView
+        footer.blendingMode = .withinWindow
+        footer.state = .active
+        footer.translatesAutoresizingMaskIntoConstraints = false
+        footer.heightAnchor.constraint(greaterThanOrEqualToConstant: 52).isActive = true
+        // Align status left and the immediate Stop action right.
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 14
+        row.edgeInsets = NSEdgeInsets(top: 9, left: 16, bottom: 9, right: 16)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.maximumNumberOfLines = 2
+        statusLabel.lineBreakMode = .byTruncatingTail
+        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        row.addArrangedSubview(statusLabel)
+        let stopButton = NSButton(title: "Stop", target: self, action: #selector(stopPlayback))
+        stopButton.bezelStyle = .rounded
+        row.addArrangedSubview(stopButton)
+        footer.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: footer.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: footer.trailingAnchor),
+            row.topAnchor.constraint(equalTo: footer.topAnchor),
+            row.bottomAnchor.constraint(equalTo: footer.bottomAnchor),
+        ])
+        return footer
+    }
+
+    // Return the three stable sidebar row count.
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        // This delegate owns only the navigation source list.
+        return NavigationDestination.allCases.count
+    }
+
+    // Build one native icon-and-label source-list row.
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        // Require a valid stable destination raw value.
+        guard let destination = NavigationDestination(rawValue: row) else { return nil }
+        // Reuse or construct one ordinary table cell.
+        let identifier = NSUserInterfaceItemIdentifier("NavigationCell")
+        let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? NSTableCellView()
+        cell.identifier = identifier
+        // Rebuild the tiny row cleanly because there are only three destinations.
+        cell.subviews.forEach { $0.removeFromSuperview() }
+        let icon = NSImageView(image: NSImage(systemSymbolName: destination.symbolName, accessibilityDescription: destination.title) ?? NSImage())
+        let label = NSTextField(labelWithString: destination.title)
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        let rowStack = NSStackView(views: [icon, label])
+        rowStack.orientation = .horizontal
+        rowStack.spacing = 8
+        rowStack.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(rowStack)
+        NSLayoutConstraint.activate([
+            rowStack.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
+            rowStack.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -8),
+            rowStack.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+        ])
+        return cell
+    }
+
+    // Switch the single content host when sidebar selection changes.
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        // Ignore transient empty selection and resolve a stable destination.
+        guard let destination = NavigationDestination(rawValue: sidebarTable.selectedRow) else { return }
+        showDestination(destination)
+    }
+
+    // Replace the visible page without stacking unrelated workflows together.
+    private func showDestination(_ destination: NavigationDestination) {
+        // Remove only the prior page from the dedicated host.
+        contentContainer.subviews.forEach { $0.removeFromSuperview() }
+        // Construct the selected page from current library and import state.
+        let page: NSView
+        switch destination {
+        case .community: page = makeCommunityView()
+        case .library: page = makeLibraryView()
+        case .importMidi: page = makeImportView()
+        }
+        page.translatesAutoresizingMaskIntoConstraints = false
+        contentContainer.addSubview(page)
+        NSLayoutConstraint.activate([
+            page.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
+            page.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+            page.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+            page.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
+        ])
+    }
+
+    // Create one consistently padded scroll page for long content.
+    private func makePageScroll(_ stack: FlippedStackView) -> NSScrollView {
+        // Keep every destination independently scrollable.
+        let scroll = ResponsivePageScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .noBorder
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 16
+        stack.edgeInsets = NSEdgeInsets(top: 28, left: 30, bottom: 30, right: 30)
+        // Start with no assumed page width; the scroll view supplies the live visible width.
+        stack.frame = NSRect(x: 0, y: 0, width: 0, height: 0)
+        // Preserve intrinsic content height so option grids never stretch grotesquely.
+        stack.frame.size.height = stack.fittingSize.height
+        scroll.documentView = stack
+        return scroll
+    }
+
+    // Keep one page control inside its already-attached reading column instead of a hard-coded width.
+    private func constrainToPageColumn(_ view: NSView, in stack: NSStackView, horizontalInset: CGFloat = 60) {
+        // Let the constraint system size the control after its owning page stack resizes.
+        view.translatesAutoresizingMaskIntoConstraints = false
+        // Constrain only views that share a hierarchy so AppKit never raises a launch-time exception.
+        view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -horizontalInset).isActive = true
+    }
+
+    // Build the attributed on-demand arrangement browser.
+    private func makeCommunityView() -> NSView {
+        // Present discovery as its own calm page.
+        let stack = FlippedStackView()
+        stack.addArrangedSubview(makeHeading("Community Collection", size: 26))
+        let introduction = makeSecondaryLabel("Hand-arranged music for limited-note instruments. Credits remain attached; songs download only when you choose them.")
+        stack.addArrangedSubview(introduction)
+        constrainToPageColumn(introduction, in: stack)
+        // Offer one clean discovery handoff without copying the wider community library into this app.
+        let browseAll = NSButton(title: "Browse all Sky Music sheets", target: self, action: #selector(openCommunityLibrary))
+        stack.addArrangedSubview(browseAll)
+        // Filter the curated catalog locally without another network request.
+        communitySearchField.placeholderString = "Search arrangements"
+        communitySearchField.target = self
+        communitySearchField.action = #selector(filterCommunitySongs)
+        stack.addArrangedSubview(communitySearchField)
+        constrainToPageColumn(communitySearchField, in: stack)
+        // Rebuild only this page's rows after search or cache changes.
+        communityRowsStack.orientation = .vertical
+        communityRowsStack.alignment = .leading
+        communityRowsStack.spacing = 10
+        rebuildCommunityRows()
+        stack.addArrangedSubview(communityRowsStack)
+        constrainToPageColumn(communityRowsStack, in: stack)
+        return makePageScroll(stack)
+    }
+
+    // Filter the curated catalog by title or credited arranger.
+    @objc private func filterCommunitySongs() {
+        // Normalise user text for a forgiving local contains search.
+        let query = communitySearchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let matchingEntries = query.isEmpty ? communityCatalog : communityCatalog.filter {
+            $0.title.lowercased().contains(query) || ($0.arranger?.lowercased().contains(query) ?? false)
+        }
+        // Keep filled hearts at the top even after a person searches the catalog.
+        visibleCommunityEntries = favoriteFirst(matchingEntries, id: { self.communityFavoriteID(for: $0) })
+        rebuildCommunityRows()
+    }
+
+    // Replace the visible community cards from current search and cache state.
+    private func rebuildCommunityRows() {
+        // Remove old arranged rows from both layout and hierarchy.
+        for view in communityRowsStack.arrangedSubviews {
+            communityRowsStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        // Explain an empty local search directly.
+        if visibleCommunityEntries.isEmpty {
+            communityRowsStack.addArrangedSubview(makeSecondaryLabel("No arrangements match this search."))
+            return
+        }
+        // Build one restrained card for every visible curated entry.
+        for (index, entry) in visibleCommunityEntries.enumerated() {
+            let card = NSBox()
+            card.boxType = .custom
+            card.cornerRadius = 10
+            card.borderWidth = 1
+            card.borderColor = NSColor.separatorColor
+            card.fillColor = NSColor.controlBackgroundColor
+            let title = makeHeading(entry.title, size: 15)
+            // Keep long song names inside the text column instead of competing with the action rail.
+            title.maximumNumberOfLines = 1
+            title.lineBreakMode = .byTruncatingTail
+            let details = makeSecondaryLabel("\(formatDuration(Double(entry.durationSeconds) * 1_000)) · \(entry.creditLine)")
+            // Keep attribution on one clipped line so every card remains a stable compact height.
+            details.maximumNumberOfLines = 1
+            details.lineBreakMode = .byTruncatingTail
+            let textStack = NSStackView(views: [title, details])
+            textStack.orientation = .vertical
+            textStack.alignment = .leading
+            textStack.spacing = 4
+            textStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let isActive = activePlaybackID == communityFavoriteID(for: entry)
+            let actionTitle = isActive ? "Stop" : (communityScoreStore.isCached(entry) ? "Play" : "Download")
+            let action = NSButton(title: actionTitle, target: self, action: #selector(communityPrimaryAction(_:)))
+            action.tag = index
+            // Keep the primary action aligned across rows even when its label changes to Download.
+            action.widthAnchor.constraint(equalToConstant: 92).isActive = true
+            if actionTitle == "Play" { action.keyEquivalent = "\r" }
+            let source = NSButton(title: "Open Source", target: self, action: #selector(openCommunitySource(_:)))
+            source.tag = index
+            source.bezelStyle = .inline
+            // Reserve one stable width for the source action beside every primary action.
+            source.widthAnchor.constraint(equalToConstant: 140).isActive = true
+            // Show the shared favourite heart inside the same fixed trailing card rail.
+            let heart = NSButton(title: "♥", target: self, action: #selector(toggleCommunityFavorite(_:)))
+            heart.tag = index
+            heart.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            heart.bezelStyle = .inline
+            heart.contentTintColor = favoriteStore.favoriteIDs().contains(communityFavoriteID(for: entry)) ? .systemPink : .secondaryLabelColor
+            let actions = NSStackView(views: [source, heart, action])
+            actions.orientation = .horizontal
+            actions.spacing = 8
+            actions.setContentCompressionResistancePriority(.required, for: .horizontal)
+            // Let this empty view absorb spare room and keep the action rail pinned to the trailing edge.
+            let actionSpacer = NSView()
+            actionSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            actionSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let row = NSStackView(views: [textStack, actionSpacer, actions])
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            row.distribution = .fill
+            row.spacing = 16
+            row.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
+            row.translatesAutoresizingMaskIntoConstraints = false
+            card.addSubview(row)
+            NSLayoutConstraint.activate([
+                row.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+                row.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+                row.topAnchor.constraint(equalTo: card.topAnchor),
+                row.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            ])
+            communityRowsStack.addArrangedSubview(card)
+            constrainToPageColumn(card, in: communityRowsStack, horizontalInset: 0)
+        }
+        // Resize the active community document after filtering or caching.
+        if let pageStack = communityRowsStack.superview as? NSStackView {
+            pageStack.frame.size.height = pageStack.fittingSize.height
+        }
+    }
+
+    // Download an uncached arrangement or play its already validated local conversion.
+    @objc private func communityPrimaryAction(_ sender: NSButton) {
+        // Resolve the visible row rather than an unfiltered catalog index.
+        guard visibleCommunityEntries.indices.contains(sender.tag) else { return }
+        let entry = visibleCommunityEntries[sender.tag]
+        // Let the active row stop its own playback without forcing a footer click.
+        if activePlaybackID == communityFavoriteID(for: entry) {
+            stopPlayback()
+            return
+        }
+        // Play a validated local cache immediately when available.
+        if let score = communityScoreStore.cachedScore(for: entry) {
+            player.play(score: score, title: entry.title, id: communityFavoriteID(for: entry), at: 1.00)
+            return
+        }
+        // Construct an encoded query without interpolating the remote filename into a path.
+        var components = URLComponents(string: "https://sky-music.herokuapp.com/api/songs")!
+        components.queryItems = [URLQueryItem(name: "get", value: entry.remoteFile)]
+        guard let url = components.url else {
+            statusLabel.stringValue = "Could not create the community download URL."
+            return
+        }
+        sender.isEnabled = false
+        statusLabel.stringValue = "Downloading \(entry.title)…"
+        // Fetch only after explicit user action; personal library use remains offline.
+        URLSession.shared.dataTask(with: url) { [weak self, weak sender] data, _, error in
+            // Return all UI work to AppKit's main queue.
+            DispatchQueue.main.async {
+                guard let self else { return }
+                sender?.isEnabled = true
+                do {
+                    // Surface transport failure before attempting to decode an empty body.
+                    if let error { throw error }
+                    guard let data else { throw CommunityLibraryError.emptyResponse }
+                    // Validate and convert untrusted remote note data before persistence.
+                    let source = try CommunitySourceSong.decodeResponse(data)
+                    let score = try source.makeScore()
+                    try self.communityScoreStore.cache(entry: entry, score: score)
+                    self.statusLabel.stringValue = "Downloaded \(entry.title). It is cached locally and ready to play."
+                    self.rebuildCommunityRows()
+                } catch {
+                    // Preserve any older valid cache and show a direct failure message.
+                    self.statusLabel.stringValue = "Could not download \(entry.title): \(error.localizedDescription)"
+                }
+            }
+        }.resume()
+    }
+
+    // Open the selected arrangement's visible upstream source page.
+    @objc private func openCommunitySource(_ sender: NSButton) {
+        // Resolve the exact currently visible entry.
+        guard visibleCommunityEntries.indices.contains(sender.tag),
+              let url = URL(string: visibleCommunityEntries[sender.tag].sourceURL) else { return }
+        // Hand the normal HTTPS link to the user's default browser.
+        NSWorkspace.shared.open(url)
+    }
+
+    // Open the complete community library only when the person explicitly asks to browse it.
+    @objc private func openCommunityLibrary() {
+        // Use the maintained public library page rather than copying any community score data.
+        guard let url = URL(string: "https://sky-music.github.io/") else { return }
+        // Hand browser navigation to the person's normal default browser.
+        NSWorkspace.shared.open(url)
+    }
+
+    // Toggle one community card's persistent shared heart and rebuild its favourite-first order.
+    @objc private func toggleCommunityFavorite(_ sender: NSButton) {
+        // Resolve the exact visible card rather than the unfiltered catalog order.
+        guard visibleCommunityEntries.indices.contains(sender.tag) else { return }
+        // Capture the stable identity before sorting changes the visible index.
+        let entry = visibleCommunityEntries[sender.tag]
+        let id = communityFavoriteID(for: entry)
+        // Flip the state from the latest persisted manifest.
+        let isFavorite = favoriteStore.favoriteIDs().contains(id)
+        do {
+            // Persist the new state before changing the row order.
+            try favoriteStore.setFavorite(id, isFavorite: !isFavorite)
+            // Re-sort the complete catalog and current search results around the new heart state.
+            communityCatalog = favoriteFirst(communityCatalog, id: { self.communityFavoriteID(for: $0) })
+            filterCommunitySongs()
+            // Confirm the small local preference change without implying a remote upload.
+            statusLabel.stringValue = isFavorite ? "Removed from favourites." : "Added to favourites."
+        } catch {
+            // Keep the existing order when the local manifest write fails.
+            statusLabel.stringValue = "Could not update favourite: \(error.localizedDescription)"
+        }
+    }
+
+    // Build the personal-only saved performance page.
+    private func makeLibraryView() -> NSView {
+        // Keep bundled public-domain and user-generated performances together but remote songs out.
+        let stack = FlippedStackView()
+        stack.addArrangedSubview(makeHeading("My Library", size: 26))
+        let introduction = makeSecondaryLabel("Your saved performances stay on this Mac. Community downloads remain in their own collection.")
+        stack.addArrangedSubview(introduction)
+        constrainToPageColumn(introduction, in: stack)
+        // Reuse the same compact, full-width card language as Community Collection.
+        libraryRowsStack.orientation = .vertical
+        libraryRowsStack.alignment = .leading
+        libraryRowsStack.spacing = 10
+        rebuildLibraryRows()
+        stack.addArrangedSubview(libraryRowsStack)
+        constrainToPageColumn(libraryRowsStack, in: stack)
+        // Keep destructive local-library maintenance available without competing with every song card.
+        let actions = NSPopUpButton(frame: .zero, pullsDown: true)
+        actions.addItem(withTitle: "•••")
+        actions.addItem(withTitle: "Clear Imported Library…")
+        actions.item(at: 1)?.target = self
+        actions.item(at: 1)?.action = #selector(clearImportedLibrary)
+        stack.addArrangedSubview(actions)
+        return makePageScroll(stack)
+    }
+
+    // Rebuild every personal card after a favourite, save, clear, or playback-state change.
+    private func rebuildLibraryRows() {
+        // Remove old cards from both layout and hierarchy before replacing their actions.
+        for view in libraryRowsStack.arrangedSubviews {
+            libraryRowsStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        // Explain an unexpected empty personal library without leaving a blank page.
+        guard !songs.isEmpty else {
+            libraryRowsStack.addArrangedSubview(makeSecondaryLabel("No saved performances yet. Import a MIDI to add one."))
+            return
+        }
+        // Build one favourite-aware personal card per bundled or locally generated score.
+        for (index, song) in songs.enumerated() {
+            // Draw the same restrained rounded card used for a community arrangement.
+            let card = NSBox()
+            card.boxType = .custom
+            card.cornerRadius = 10
+            card.borderWidth = 1
+            card.borderColor = NSColor.separatorColor
+            card.fillColor = NSColor.controlBackgroundColor
+            // Keep title and description inside the text column before the action rail.
+            let title = makeHeading(song.title, size: 15)
+            title.maximumNumberOfLines = 1
+            title.lineBreakMode = .byTruncatingTail
+            let details = makeSecondaryLabel(song.subtitle)
+            details.maximumNumberOfLines = 1
+            details.lineBreakMode = .byTruncatingTail
+            let textStack = NSStackView(views: [title, details])
+            textStack.orientation = .vertical
+            textStack.alignment = .leading
+            textStack.spacing = 4
+            textStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            // Change only the currently playing score's primary action into Stop.
+            let isActive = activePlaybackID == libraryFavoriteID(for: song)
+            let actionTitle = isActive ? "Stop" : "Play"
+            let action = NSButton(title: actionTitle, target: self, action: #selector(libraryPrimaryAction(_:)))
+            action.tag = index
+            action.widthAnchor.constraint(equalToConstant: 92).isActive = true
+            if actionTitle == "Play" { action.keyEquivalent = "\r" }
+            // Place the filled or outlined heart directly beside that primary action.
+            let heart = NSButton(title: "♥", target: self, action: #selector(toggleLibraryFavorite(_:)))
+            heart.tag = index
+            heart.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            heart.bezelStyle = .inline
+            heart.contentTintColor = favoriteStore.favoriteIDs().contains(libraryFavoriteID(for: song)) ? .systemPink : .secondaryLabelColor
+            let actions = NSStackView(views: [heart, action])
+            actions.orientation = .horizontal
+            actions.spacing = 8
+            actions.setContentCompressionResistancePriority(.required, for: .horizontal)
+            // Absorb spare width so the heart and play control stay pinned to the trailing edge.
+            let actionSpacer = NSView()
+            actionSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            actionSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let row = NSStackView(views: [textStack, actionSpacer, actions])
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            row.distribution = .fill
+            row.spacing = 16
+            row.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
+            row.translatesAutoresizingMaskIntoConstraints = false
+            card.addSubview(row)
+            NSLayoutConstraint.activate([
+                row.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+                row.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+                row.topAnchor.constraint(equalTo: card.topAnchor),
+                row.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            ])
+            libraryRowsStack.addArrangedSubview(card)
+            constrainToPageColumn(card, in: libraryRowsStack, horizontalInset: 0)
+        }
+        // Recalculate the page document after a favourite sorting or playback action.
+        if let pageStack = libraryRowsStack.superview as? NSStackView {
+            pageStack.frame.size.height = pageStack.fittingSize.height
+        }
+    }
+
+    // Build the local MIDI import page with technical controls collapsed by default.
+    private func makeImportView() -> NSView {
+        // Present import as a separate focused workflow.
+        let stack = FlippedStackView()
+        stack.addArrangedSubview(makeHeading("Import MIDI", size: 26))
+        let introduction = makeSecondaryLabel("Your MIDI stays local. Review its musical tracks before previewing or saving a reduction.")
+        stack.addArrangedSubview(introduction)
+        constrainToPageColumn(introduction, in: stack)
+        // Add a large but bounded native drag destination.
+        let dropView = MidiDropView(frame: NSRect(x: 0, y: 0, width: 620, height: 112))
         dropView.onFile = { [weak self] url in self?.loadMidi(url) }
-        dropView.translatesAutoresizingMaskIntoConstraints = false
-        dropView.widthAnchor.constraint(equalToConstant: 650).isActive = true
-        dropView.heightAnchor.constraint(equalToConstant: 92).isActive = true
-        stack.addArrangedSubview(dropView)
-        // Add a normal file-picker alternative to dragging.
-        stack.addArrangedSubview(NSButton(title: "Open MIDI…", target: self, action: #selector(openMidi)))
-        // Show source analysis immediately below file selection.
+        dropView.heightAnchor.constraint(equalToConstant: 112).isActive = true
+        let sourceCard = makeImportCard(dropView)
+        stack.addArrangedSubview(sourceCard)
+        constrainToPageColumn(sourceCard, in: stack)
+        // Keep file selection aligned to the same full-width source card.
+        let openMidiButton = NSButton(title: "Open MIDI…", target: self, action: #selector(openMidi))
+        stack.addArrangedSubview(openMidiButton)
+        // Show concise source analysis before technical reduction controls.
         importSummaryLabel.textColor = .secondaryLabelColor
-        importSummaryLabel.maximumNumberOfLines = 3
-        importSummaryLabel.preferredMaxLayoutWidth = 650
-        stack.addArrangedSubview(importSummaryLabel)
-        // Label and configure the dynamic source tracks.
-        stack.addArrangedSubview(makeHeading("Enabled tracks", size: 14))
+        importSummaryLabel.maximumNumberOfLines = 0
+        importSummaryLabel.lineBreakMode = .byWordWrapping
+        let summaryCard = makeImportCard(importSummaryLabel)
+        stack.addArrangedSubview(summaryCard)
+        constrainToPageColumn(summaryCard, in: stack)
+        // Group the track heading and checkboxes in one full-width card.
+        let tracksContent = NSStackView()
+        tracksContent.orientation = .vertical
+        tracksContent.alignment = .leading
+        tracksContent.spacing = 10
+        tracksContent.addArrangedSubview(makeHeading("Enabled tracks", size: 15))
         tracksStack.orientation = .vertical
         tracksStack.alignment = .leading
-        tracksStack.spacing = 5
-        tracksStack.addArrangedSubview(makeSecondaryLabel("Load a MIDI to inspect its musical tracks."))
-        stack.addArrangedSubview(tracksStack)
-        // Add the importer configuration grid.
-        configureImportControls()
-        stack.addArrangedSubview(makeImportGrid())
-        // Add live imported-score actions.
-        playImportedButton.isEnabled = false
-        saveImportedButton.isEnabled = false
-        stack.addArrangedSubview(makeImportedButtons())
-        // Add the common live status line.
-        stack.addArrangedSubview(makeSeparator())
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.maximumNumberOfLines = 3
-        statusLabel.preferredMaxLayoutWidth = 650
-        stack.addArrangedSubview(statusLabel)
-        // Size the scroll document to its real controls so AppKit cannot stretch grid rows.
-        stack.frame.size.height = stack.fittingSize.height
-        // Let the scroll view own the completed document stack.
-        scroll.documentView = stack
-        // Return the ready root content view.
-        return scroll
+        tracksStack.spacing = 7
+        if tracksStack.arrangedSubviews.isEmpty {
+            tracksStack.addArrangedSubview(makeSecondaryLabel("Load a MIDI to inspect its musical tracks."))
+        }
+        tracksContent.addArrangedSubview(tracksStack)
+        let tracksCard = makeImportCard(tracksContent)
+        stack.addArrangedSubview(tracksCard)
+        constrainToPageColumn(tracksCard, in: stack)
+        // Hide mapping detail until the user explicitly asks for it.
+        advancedMappingDisclosure.setButtonType(.onOff)
+        advancedMappingDisclosure.bezelStyle = .disclosure
+        advancedMappingDisclosure.state = .off
+        advancedMappingDisclosure.setContentHuggingPriority(.required, for: .horizontal)
+        advancedMappingDisclosure.setContentCompressionResistancePriority(.required, for: .horizontal)
+        advancedMappingStack.orientation = .vertical
+        advancedMappingStack.alignment = .leading
+        advancedMappingStack.spacing = 8
+        if advancedMappingStack.arrangedSubviews.isEmpty {
+            advancedMappingStack.addArrangedSubview(makeImportGrid())
+        }
+        advancedMappingStack.isHidden = true
+        let advancedContent = NSStackView(views: [advancedMappingDisclosure, advancedMappingStack])
+        advancedContent.orientation = .vertical
+        advancedContent.alignment = .leading
+        advancedContent.spacing = 10
+        let advancedMappingCard = makeImportCard(advancedContent)
+        stack.addArrangedSubview(advancedMappingCard)
+        constrainToPageColumn(advancedMappingCard, in: stack)
+        playImportedButton.isEnabled = importedDocument != nil
+        saveImportedButton.isEnabled = importedDocument != nil
+        let actionCard = makeImportCard(makeImportedButtons())
+        stack.addArrangedSubview(actionCard)
+        constrainToPageColumn(actionCard, in: stack)
+        return makePageScroll(stack)
+    }
+
+    // Wrap one importer section in the same full-width rounded card language as every score row.
+    private func makeImportCard(_ content: NSView) -> NSBox {
+        // Create one subtle card whose border works in light and dark mode.
+        let card = NSBox()
+        card.boxType = .custom
+        card.cornerRadius = 10
+        card.borderWidth = 1
+        card.borderColor = NSColor.separatorColor
+        card.fillColor = NSColor.controlBackgroundColor
+        // Let the supplied section control or stack fill the card with consistent breathing room.
+        content.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(content)
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 14),
+            content.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -14),
+            content.topAnchor.constraint(equalTo: card.topAnchor, constant: 12),
+            content.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -12),
+        ])
+        // Return the complete full-width import card.
+        return card
+    }
+
+    // Reveal or hide advanced MIDI reduction controls without changing their values.
+    @objc private func toggleAdvancedMapping(_ sender: NSButton) {
+        // Mirror the disclosure state exactly.
+        advancedMappingStack.isHidden = sender.state != .on
+        // Recompute the import document height after the visibility change.
+        if let pageStack = advancedMappingStack.superview as? NSStackView {
+            pageStack.frame.size.height = pageStack.fittingSize.height
+        }
     }
 
     // Load the packaged public-domain manifest once.
@@ -410,7 +1053,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let url = Bundle.main.url(forResource: "library", withExtension: "json"),
               let library = try? JSONDecoder().decode(SongLibrary.self, from: Data(contentsOf: url)) else { return [] }
         // Merge read-only public entries with valid locally generated entries.
-        return library.songs + userScoreStore.loadSongs()
+        return favoriteFirst(library.songs + userScoreStore.loadSongs(), id: { self.libraryFavoriteID(for: $0) })
+    }
+
+    // Keep every current local favourite when moving from the old per-song flag to shared hearts.
+    private func migrateLegacyFavorites() {
+        // Read the existing local manifest before cards ask the shared store for its IDs.
+        for song in userScoreStore.loadSongs() where song.isFavorite {
+            // Preserve each persisted local favourite without changing its generated score.
+            try? favoriteStore.setFavorite(libraryFavoriteID(for: song), isFavorite: true)
+        }
+    }
+
+    // Namespace every personal score identity away from metadata-only community entries.
+    private func libraryFavoriteID(for song: Song) -> String {
+        // Use the stable manifest identity rather than a mutable display title.
+        return "library:\(song.id)"
+    }
+
+    // Namespace every community identity away from bundled and imported scores.
+    private func communityFavoriteID(for entry: CommunityCatalogEntry) -> String {
+        // Use the repository-owned catalog ID rather than its visible title.
+        return "community:\(entry.id)"
+    }
+
+    // Sort cards with favourites first while keeping original order among equal heart states.
+    private func favoriteFirst<T>(_ items: [T], id: (T) -> String) -> [T] {
+        // Read the current small manifest once for this complete ordering pass.
+        let favorites = favoriteStore.favoriteIDs()
+        // Retain order explicitly because Swift sorting does not promise stability.
+        return items.enumerated().sorted { left, right in
+            // Check each item's persistent shared favourite state.
+            let leftIsFavorite = favorites.contains(id(left.element))
+            let rightIsFavorite = favorites.contains(id(right.element))
+            // Put filled hearts ahead of outlined hearts.
+            if leftIsFavorite != rightIsFavorite { return leftIsFavorite }
+            // Preserve catalog or manifest order inside each group.
+            return left.offset < right.offset
+        }.map(\.element)
+    }
+
+    // Load the bundled metadata-only community catalog once.
+    private func loadCommunityCatalog() -> [CommunityCatalogEntry] {
+        // Find and decode only the curated identifiers, credits, and source links.
+        guard let url = Bundle.main.url(forResource: "community-catalog", withExtension: "json"),
+              let catalog = try? JSONDecoder().decode(CommunityCatalog.self, from: Data(contentsOf: url)) else { return [] }
+        // Preserve the quality-first order researched for this instrument.
+        return favoriteFirst(catalog.songs, id: { self.communityFavoriteID(for: $0) })
     }
 
     // Rebuild the picker from protected bundled songs and current local storage.
@@ -429,6 +1118,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Refresh the subtitle and favourite-button state for the selected row.
         updateSubtitle()
+        // Refresh the visible cards even though the legacy picker remains as an internal compatibility helper.
+        rebuildLibraryRows()
     }
 
     // Prefix favourites inside the selector without changing their stored title.
@@ -455,17 +1146,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         label.textColor = .secondaryLabelColor
         // Return the ready label.
         return label
-    }
-
-    // Create a full-width visual section divider.
-    private func makeSeparator() -> NSBox {
-        // Use AppKit's standard separator line style.
-        let separator = NSBox()
-        separator.boxType = .separator
-        // Keep the line aligned with the 650-point content width.
-        separator.widthAnchor.constraint(equalToConstant: 650).isActive = true
-        // Return the ready divider.
-        return separator
     }
 
     // Fill the saved-song picker and connect selection changes.
@@ -536,18 +1216,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let row = NSStackView()
         row.orientation = .horizontal
         row.spacing = 10
-        // Add saved score playback.
-        row.addArrangedSubview(NSButton(title: "Play Saved — 5 second focus time", target: self, action: #selector(playSelected)))
-        // Add the common immediate stop action.
-        row.addArrangedSubview(NSButton(title: "Stop", target: self, action: #selector(stopPlayback)))
+        // Add one clear personal-performance playback action.
+        row.addArrangedSubview(NSButton(title: "Play — 5 second focus time", target: self, action: #selector(playSelected)))
         // Add one persistent favourite toggle for imported saved songs.
         row.addArrangedSubview(favoriteButton)
-        // Let legacy and current local songs receive an explicit independent speed.
-        row.addArrangedSubview(savedSpeedButton)
-        // Add a confirmed bulk clear that never removes Aloha.
-        row.addArrangedSubview(NSButton(title: "Clear Imported Library…", target: self, action: #selector(clearImportedLibrary)))
+        // Keep destructive library maintenance inside a compact actions menu.
+        let actions = NSPopUpButton(frame: .zero, pullsDown: true)
+        actions.addItem(withTitle: "•••")
+        actions.addItem(withTitle: "Clear Imported Library…")
+        actions.item(at: 1)?.target = self
+        actions.item(at: 1)?.action = #selector(clearImportedLibrary)
+        row.addArrangedSubview(actions)
         // Return the ready row.
         return row
+    }
+
+    // Start or stop one personal score from its own fixed trailing card rail.
+    @objc private func libraryPrimaryAction(_ sender: NSButton) {
+        // Resolve the visible card index against the current favourite-first order.
+        guard songs.indices.contains(sender.tag) else { return }
+        // Capture the stable song before playback or sorting changes any row index.
+        let song = songs[sender.tag]
+        // Let the active row stop itself without requiring the persistent footer.
+        if activePlaybackID == libraryFavoriteID(for: song) {
+            stopPlayback()
+            return
+        }
+        // Preserve local saved timing while bundled scores use the normal current speed.
+        let speed = song.playbackSpeed ?? (song.userProvided == true ? 1.00 : selectedSpeed)
+        // Start through the common player with this card's stable shared identity.
+        player.play(song, id: libraryFavoriteID(for: song), at: speed)
+    }
+
+    // Toggle one personal card's heart and immediately restore favourite-first order.
+    @objc private func toggleLibraryFavorite(_ sender: NSButton) {
+        // Resolve the current card before the following sort changes its index.
+        guard songs.indices.contains(sender.tag) else { return }
+        // Retain the stable manifest song rather than relying on its display title.
+        let song = songs[sender.tag]
+        let id = libraryFavoriteID(for: song)
+        // Read the latest persisted state so consecutive clicks cannot drift from disk.
+        let isFavorite = favoriteStore.favoriteIDs().contains(id)
+        do {
+            // Persist the shared heart for bundled and imported songs alike.
+            try favoriteStore.setFavorite(id, isFavorite: !isFavorite)
+            // Retain backwards-compatible imported-song metadata for older app versions.
+            if song.userProvided == true {
+                _ = try userScoreStore.setFavorite(id: song.id, isFavorite: !isFavorite)
+            }
+            // Re-load the now favourite-first personal order and redraw the visible card stack.
+            refreshLibrary(selectingID: song.id)
+            // Confirm the local preference update plainly.
+            statusLabel.stringValue = isFavorite ? "Removed from favourites." : "Added to favourites."
+        } catch {
+            // Leave the visible order unchanged when either local persistence write fails.
+            statusLabel.stringValue = "Could not update favourite: \(error.localizedDescription)"
+        }
     }
 
     // Build imported-score Play and Stop buttons.
@@ -560,8 +1284,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         row.addArrangedSubview(playImportedButton)
         // Save only generated JSON key events, never the source MIDI.
         row.addArrangedSubview(saveImportedButton)
-        // Add the common immediate stop action.
-        row.addArrangedSubview(NSButton(title: "Stop", target: self, action: #selector(stopPlayback)))
         // Return the ready row.
         return row
     }
@@ -705,7 +1427,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Generate the score from current visible options.
         guard let score = importedScore() else { return }
         // Play without writing or copying the source MIDI.
-        player.play(score: score, title: importedTitle, at: selectedSpeed)
+        player.play(score: score, title: importedTitle, id: "import:preview", at: selectedSpeed)
     }
 
     // Save the current generated reduction to the user's local picker library.
@@ -735,32 +1457,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Use a local song's persisted timing; legacy local entries safely default to original speed.
         let speed = songs[index].playbackSpeed ?? (songs[index].userProvided == true ? 1.00 : selectedSpeed)
         // Start playback without allowing the live picker to override persisted local timing.
-        player.play(songs[index], at: speed)
+        player.play(songs[index], id: libraryFavoriteID(for: songs[index]), at: speed)
     }
 
     // Reflect saved-song selection changes beneath the picker.
     @objc private func selectionChanged() { updateSubtitle() }
-
-    // Assign the visible timing picker value to the selected local performance.
-    @objc private func setSavedSpeed() {
-        // Resolve the current picker row safely.
-        let index = songPicker.indexOfSelectedItem
-        // Protect bundled Aloha and reject an absent local selection.
-        guard songs.indices.contains(index), songs[index].userProvided == true else { return }
-        // Preserve the stable identity across the manifest rewrite.
-        let selected = songs[index]
-        do {
-            // Persist the visible timing as this song's independent playback speed.
-            _ = try userScoreStore.setPlaybackSpeed(id: selected.id, playbackSpeed: selectedSpeed)
-            // Reload the manifest and keep the same song selected.
-            refreshLibrary(selectingID: selected.id)
-            // Confirm the exact durable timing now attached to this song.
-            statusLabel.stringValue = "Saved \(selected.title) playback speed at \(formattedSpeed(selectedSpeed))."
-        } catch {
-            // Leave the current picker untouched when persistence fails.
-            statusLabel.stringValue = "Could not save playback speed: \(error.localizedDescription)"
-        }
-    }
 
     // Toggle the selected imported performance's persistent favourite state.
     @objc private func toggleFavorite() {
@@ -825,8 +1526,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         subtitleLabel.stringValue = selected.subtitle + timing
         // Protect bundled Aloha from local metadata actions.
         favoriteButton.isEnabled = selected.userProvided == true
-        // Protect bundled Aloha from local timing writes.
-        savedSpeedButton.isEnabled = selected.userProvided == true
         // Reflect the selected local entry's persistent state.
         favoriteButton.title = selected.isFavorite ? "♥ Unfavourite" : "♡ Favourite"
     }
