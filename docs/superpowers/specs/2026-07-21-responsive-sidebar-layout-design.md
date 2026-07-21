@@ -12,6 +12,8 @@ Each scroll page stops using a fixed 680-point document width. Its document stac
 
 All page descriptions become width-aware wrapping labels. Existing fields, cards, and MIDI drop targets replace fixed widths with leading/trailing constraints inside the responsive page column. Rows keep their buttons visible while their title and attribution text wrap before being truncated.
 
+The native title-bar separator is disabled so no bright horizontal rule divides the title bar from the dark app content. Community cards use a fixed trailing action rail: **Open Source** and **Play** or **Download** have stable widths and align vertically across every row. Song titles and credits use one-line tail truncation, so a longer name ends with an ellipsis before it can collide with that action rail.
+
 ## Boundaries
 
 This does not alter MIDI conversion, playback timing, stored songs, community download behavior, or the source and attribution model. It only changes AppKit layout constraints and adds source-level regression checks for divider-free, responsive content sizing.
