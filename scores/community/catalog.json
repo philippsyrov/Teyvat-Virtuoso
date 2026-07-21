@@ -1,0 +1,132 @@
+{
+  "songs": [
+    {
+      "id": "illusionary-daytime",
+      "title": "Illusionary Daytime",
+      "arranger": "GodArtz",
+      "durationSeconds": 245,
+      "remoteFile": "Illusionary_Daytime__GodArtz.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "path-of-the-wind",
+      "title": "Path of the Wind",
+      "arranger": null,
+      "durationSeconds": 217,
+      "remoteFile": "SCSM_pack.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "part-of-your-world",
+      "title": "Part of Your World",
+      "arranger": "Phoebe",
+      "durationSeconds": 200,
+      "remoteFile": "The_Little_Mermaid_-_Part_of_Your_World_Arrangement_by_Phoebe.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "one-summers-day",
+      "title": "One Summer’s Day",
+      "arranger": "ellie · Fox Mask Cover",
+      "durationSeconds": 169,
+      "remoteFile": "One_Summers_Day__ellie__Fox_Mask_Cover_.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "dvalins-nest",
+      "title": "Dvalin’s Nest",
+      "arranger": "candy",
+      "durationSeconds": 161,
+      "remoteFile": "Dvalins_Nest__candy.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "subwoofer-lullaby",
+      "title": "Subwoofer Lullaby",
+      "arranger": "Sunny · adrac",
+      "durationSeconds": 160,
+      "remoteFile": "Subwoofer_Lullaby_composed_by_Sunny_httpswww.youtube.comwatchv12-2XXti9Ks_bugfix_1__adrac.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "let-the-wind-tell-you",
+      "title": "Let the Wind Tell You",
+      "arranger": null,
+      "durationSeconds": 137,
+      "remoteFile": "Genshin_Impact_fansong_fixed__.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "waltzing-in-the-rain",
+      "title": "Waltzing in the Rain",
+      "arranger": "Pulsar",
+      "durationSeconds": 124,
+      "remoteFile": "Waltzing_in_the_Rain_Hidden_forest_theme_ikina__Pulsar.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "somewhere-over-the-rainbow",
+      "title": "Somewhere Over the Rainbow",
+      "arranger": null,
+      "durationSeconds": 120,
+      "remoteFile": "Somewhere_over_the_rainbow.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "liyue-lantern-rite",
+      "title": "Liyue — Lantern Rite",
+      "arranger": null,
+      "durationSeconds": 109,
+      "remoteFile": "Liyue_-_Latern_Rite.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "la-vie-en-rose",
+      "title": "La Vie en Rose",
+      "arranger": null,
+      "durationSeconds": 98,
+      "remoteFile": "La_Vie_En_Rose_1.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "hes-a-pirate",
+      "title": "He’s a Pirate",
+      "arranger": null,
+      "durationSeconds": 90,
+      "remoteFile": "He_is_a_pirate.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "zhongli-listener",
+      "title": "Zhongli — Listener",
+      "arranger": null,
+      "durationSeconds": 87,
+      "remoteFile": "Zhongli_-_Listener.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "i-see-the-light",
+      "title": "I See the Light",
+      "arranger": "Luna",
+      "durationSeconds": 81,
+      "remoteFile": "I_See_The_Light___Luna.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "binks-sake",
+      "title": "Binks’ Sake",
+      "arranger": null,
+      "durationSeconds": 62,
+      "remoteFile": "Binks_Sake.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    },
+    {
+      "id": "song-of-storms",
+      "title": "Song of Storms",
+      "arranger": "Joeldor",
+      "durationSeconds": 58,
+      "remoteFile": "Song_of_Storms_-_The_Legend_of_Zelda__Joeldor.txt",
+      "sourceURL": "https://sky-music.herokuapp.com/songLibrary.html?download=true"
+    }
+  ]
+}

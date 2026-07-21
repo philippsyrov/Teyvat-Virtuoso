@@ -10,13 +10,15 @@ rm -rf "$app_root"
 # Create the standard Finder-recognised bundle layout.
 mkdir -p "$app_root/Contents/MacOS" "$app_root/Contents/Resources"
 # Compile the native AppKit selector and keyboard performer.
-swiftc "$project_root/player/MidiEngine.swift" "$project_root/player/UserScoreStore.swift" "$project_root/player/GenshinLyrePlayerApp.swift" -o "$app_root/Contents/MacOS/TeyvatVirtuoso" -framework AppKit -framework CoreGraphics
+swiftc "$project_root/player/MidiEngine.swift" "$project_root/player/UserScoreStore.swift" "$project_root/player/CommunityLibrary.swift" "$project_root/player/GenshinLyrePlayerApp.swift" -o "$app_root/Contents/MacOS/TeyvatVirtuoso" -framework AppKit -framework CoreGraphics
 # Copy the regular macOS application metadata.
 cp "$project_root/player/Info.plist" "$app_root/Contents/Info.plist"
 # Copy the compiled multi-resolution Finder and Dock icon.
 cp "$project_root/assets/AppIcon.icns" "$app_root/Contents/Resources/AppIcon.icns"
 # Bundle the open-source-safe public score manifest.
 cp "$project_root/scores/public-domain/library.json" "$app_root/Contents/Resources/library.json"
+# Bundle only community metadata and remote identifiers, never community note data.
+cp "$project_root/scores/community/catalog.json" "$app_root/Contents/Resources/community-catalog.json"
 # Bundle every score listed by that manifest.
 cp "$project_root/scores/public-domain/"*.json "$app_root/Contents/Resources/"
 # Ad-hoc sign the complete bundle under one stable identifier so Accessibility approval survives rebuilds.

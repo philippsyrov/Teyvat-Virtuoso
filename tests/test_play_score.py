@@ -100,6 +100,40 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("MidiEngineTests passed", result.stdout)
 
+    def test_community_library_contract(self):
+        """Community responses must convert safely while retaining attribution and cache boundaries."""
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "community-library-tests"
+            subprocess.run(
+                [
+                    "swiftc",
+                    str(root / "player" / "MidiEngine.swift"),
+                    str(root / "player" / "CommunityLibrary.swift"),
+                    str(root / "tests" / "CommunityLibraryTests.swift"),
+                    "-o",
+                    str(executable),
+                ],
+                check=True,
+            )
+            result = subprocess.run([str(executable)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CommunityLibraryTests passed", result.stdout)
+
+    def test_community_catalog_contains_metadata_without_note_payloads(self):
+        """The repository may identify community work but must not redistribute its notes."""
+        root = Path(__file__).parents[1]
+        catalog_path = root / "scores" / "community" / "catalog.json"
+        catalog_text = catalog_path.read_text()
+        catalog = json.loads(catalog_text)
+        self.assertGreaterEqual(len(catalog["songs"]), 12)
+        self.assertNotIn("songNotes", catalog_text)
+        for entry in catalog["songs"]:
+            self.assertTrue(entry["id"])
+            self.assertTrue(entry["title"])
+            self.assertTrue(entry["remoteFile"])
+            self.assertTrue(entry["sourceURL"].startswith("https://"))
+
     def test_native_app_exposes_the_complete_midi_import_workflow(self):
         """The visible app must wire drag/drop, track choice, mapping, and playback."""
         root = Path(__file__).parents[1]
