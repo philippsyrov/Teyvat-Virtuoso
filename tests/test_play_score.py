@@ -2,6 +2,7 @@
 
 import json
 import hashlib
+import plistlib
 import subprocess
 import tempfile
 import unittest
@@ -119,6 +120,8 @@ class ValidateScoreTests(unittest.TestCase):
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
         self.assertIn("Smart — key-aware", source)
         self.assertIn("toggleFavorite", source)
+        self.assertIn("Set Saved Speed", source)
+        self.assertIn("setPlaybackSpeed", source)
         self.assertIn("Clear Imported Library…", source)
         self.assertIn("NSAlert", source)
         self.assertIn("userScoreStore.clear()", source)
@@ -180,6 +183,10 @@ class ValidateScoreTests(unittest.TestCase):
         signature = result.stdout + result.stderr
         self.assertIn("Identifier=com.philippsyrov.teyvat-virtuoso", signature)
         self.assertIn("Info.plist entries=", signature)
+        with (app / "Contents" / "Info.plist").open("rb") as plist_file:
+            metadata = plistlib.load(plist_file)
+        self.assertEqual(metadata.get("CFBundleIconFile"), "AppIcon")
+        self.assertTrue((app / "Contents" / "Resources" / "AppIcon.icns").is_file())
 
 
 if __name__ == "__main__":

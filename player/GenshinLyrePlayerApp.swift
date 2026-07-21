@@ -273,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var trackButtons: [Int: NSButton] = [:]
     // Store the native song selector.
     private let songPicker = NSPopUpButton(frame: .zero, pullsDown: false)
-    // Store the timing selector shared by bundled and imported scores.
+    // Store the timing selector used for live imports, bundled songs, and explicit saved-speed updates.
     private let speedPicker = NSPopUpButton(frame: .zero, pullsDown: false)
     // Store MIDI reduction controls.
     private let transposePicker = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -291,6 +291,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var saveImportedButton = NSButton(title: "Save to Library", target: self, action: #selector(saveImported))
     // Store the selected local song's persistent favourite action.
     private lazy var favoriteButton = NSButton(title: "♡ Favourite", target: self, action: #selector(toggleFavorite))
+    // Store the action that assigns the visible timing to one existing local song.
+    private lazy var savedSpeedButton = NSButton(title: "Set Saved Speed", target: self, action: #selector(setSavedSpeed))
     // Own the local Application Support score store.
     private let userScoreStore = UserScoreStore()
     // Own the cancellable native keyboard player.
@@ -540,6 +542,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         row.addArrangedSubview(NSButton(title: "Stop", target: self, action: #selector(stopPlayback)))
         // Add one persistent favourite toggle for imported saved songs.
         row.addArrangedSubview(favoriteButton)
+        // Let legacy and current local songs receive an explicit independent speed.
+        row.addArrangedSubview(savedSpeedButton)
         // Add a confirmed bulk clear that never removes Aloha.
         row.addArrangedSubview(NSButton(title: "Clear Imported Library…", target: self, action: #selector(clearImportedLibrary)))
         // Return the ready row.
@@ -710,12 +714,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let score = importedScore() else { return }
         // Write generated JSON and refresh the picker.
         do {
-            // Persist only score events and display metadata.
-            let song = try userScoreStore.save(title: importedTitle, events: score)
+            // Persist score events plus the timing selected for this performance.
+            let song = try userScoreStore.save(title: importedTitle, events: score, playbackSpeed: selectedSpeed)
             // Reload and select the new stable ID through the common picker path.
             refreshLibrary(selectingID: song.id)
             // Confirm the local-only storage boundary.
-            statusLabel.stringValue = "Saved generated score locally. The original MIDI was not copied."
+            statusLabel.stringValue = "Saved generated score locally at \(formattedSpeed(selectedSpeed)). The original MIDI was not copied."
         } catch {
             // Surface file-system failures without losing the in-memory MIDI.
             statusLabel.stringValue = "Could not save score: \(error.localizedDescription)"
@@ -727,11 +731,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Resolve the selected manifest row safely.
         let index = songPicker.indexOfSelectedItem
         // Begin only when that row exists.
-        if songs.indices.contains(index) { player.play(songs[index], at: selectedSpeed) }
+        guard songs.indices.contains(index) else { return }
+        // Use a local song's persisted timing; legacy local entries safely default to original speed.
+        let speed = songs[index].playbackSpeed ?? (songs[index].userProvided == true ? 1.00 : selectedSpeed)
+        // Start playback without allowing the live picker to override persisted local timing.
+        player.play(songs[index], at: speed)
     }
 
     // Reflect saved-song selection changes beneath the picker.
     @objc private func selectionChanged() { updateSubtitle() }
+
+    // Assign the visible timing picker value to the selected local performance.
+    @objc private func setSavedSpeed() {
+        // Resolve the current picker row safely.
+        let index = songPicker.indexOfSelectedItem
+        // Protect bundled Aloha and reject an absent local selection.
+        guard songs.indices.contains(index), songs[index].userProvided == true else { return }
+        // Preserve the stable identity across the manifest rewrite.
+        let selected = songs[index]
+        do {
+            // Persist the visible timing as this song's independent playback speed.
+            _ = try userScoreStore.setPlaybackSpeed(id: selected.id, playbackSpeed: selectedSpeed)
+            // Reload the manifest and keep the same song selected.
+            refreshLibrary(selectingID: selected.id)
+            // Confirm the exact durable timing now attached to this song.
+            statusLabel.stringValue = "Saved \(selected.title) playback speed at \(formattedSpeed(selectedSpeed))."
+        } catch {
+            // Leave the current picker untouched when persistence fails.
+            statusLabel.stringValue = "Could not save playback speed: \(error.localizedDescription)"
+        }
+    }
 
     // Toggle the selected imported performance's persistent favourite state.
     @objc private func toggleFavorite() {
@@ -791,9 +820,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Show the selected arrangement description.
         let selected = songs[index]
-        subtitleLabel.stringValue = selected.subtitle
+        // Explain independent local timing and make legacy 100% fallback visible.
+        let timing = selected.userProvided == true ? " · Saved speed: \(formattedSpeed(selected.playbackSpeed ?? 1.00))" : ""
+        subtitleLabel.stringValue = selected.subtitle + timing
         // Protect bundled Aloha from local metadata actions.
         favoriteButton.isEnabled = selected.userProvided == true
+        // Protect bundled Aloha from local timing writes.
+        savedSpeedButton.isEnabled = selected.userProvided == true
         // Reflect the selected local entry's persistent state.
         favoriteButton.title = selected.isFavorite ? "♥ Unfavourite" : "♡ Favourite"
     }
@@ -835,6 +868,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case 6: return 2.00
         default: return 1.00
         }
+    }
+
+    // Format one speed multiplier using the same whole-percent language as playback status.
+    private func formattedSpeed(_ speed: Double) -> String {
+        // Convert a multiplier such as 1.25 into a concise 125% label.
+        return "\(Int((speed * 100).rounded()))%"
     }
 
     // Format a millisecond duration as minutes and zero-padded seconds.
