@@ -8,6 +8,8 @@
   <string>TeyvatVirtuoso</string>
   <key>CFBundleIdentifier</key>
   <string>com.philippsyrov.teyvat-virtuoso</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleName</key>
   <string>Teyvat Virtuoso</string>
   <key>CFBundlePackageType</key>

@@ -40,17 +40,27 @@ struct UserScoreStoreTests {
         let store = UserScoreStore(root: root)
         // Decode missing favourite metadata as false instead of rejecting old libraries.
         storeExpect(store.loadSongs().first?.isFavorite == false, "expected old manifests to decode as non-favourite")
+        // Keep legacy songs readable while marking their original speed as genuinely unknown.
+        storeExpect(store.loadSongs().first?.playbackSpeed == nil, "expected old manifests to decode without invented speed metadata")
 
         // Save a new generated arrangement using the production event schema.
-        let saved = try store.save(title: "Pirates", events: [ImportedScoreEvent(delayMs: 0, keys: ["a"])])
+        let saved = try store.save(title: "Pirates", events: [ImportedScoreEvent(delayMs: 0, keys: ["a"])], playbackSpeed: 1.50)
         // Start every newly imported song outside the favourites group.
         storeExpect(saved.isFavorite == false, "expected new songs to start non-favourite")
+        // Persist the timing selected while the MIDI reduction was saved.
+        storeExpect(saved.playbackSpeed == 1.50, "expected new songs to remember their selected speed")
+        // Let an existing saved song receive an explicit per-song speed later.
+        _ = try store.setPlaybackSpeed(id: "legacy", playbackSpeed: 1.25)
+        // Confirm the update survives a fresh store instance rather than living only in memory.
+        storeExpect(UserScoreStore(root: root).loadSongs().first(where: { $0.id == "legacy" })?.playbackSpeed == 1.25, "expected assigned saved speed to survive restart")
         // Persist a favourite toggle and receive the newly sorted local library.
         let reordered = try store.setFavorite(id: saved.id, isFavorite: true)
         // Put the favourite first without changing its stable identity.
         storeExpect(reordered.first?.id == saved.id && reordered.first?.isFavorite == true, "expected persistent favourite sorting")
         // Confirm a fresh store instance sees the same persisted favourite state.
         storeExpect(UserScoreStore(root: root).loadSongs().first?.id == saved.id, "expected favourite order to survive restart")
+        // Preserve speed metadata while changing an unrelated favourite flag.
+        storeExpect(UserScoreStore(root: root).loadSongs().first?.playbackSpeed == 1.50, "expected favourite changes to preserve saved speed")
 
         // Reject attempts to mutate an ID that does not belong to the local manifest.
         do {

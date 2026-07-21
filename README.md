@@ -12,6 +12,7 @@ The app also works with other focused game windows that accept normal Mac keyboa
 - Smart key-aware handling for unavailable black-key notes, with strict/up/down fallbacks
 - Adjustable chord-merging tolerance for near-simultaneous source notes
 - Source-tempo preservation with selectable playback speed from 90% through 200%
+- Per-song saved timing, including a one-click speed assignment for legacy library entries
 - Real simultaneous key-down events for chords of up to three notes
 - Five-second focus countdown and interruptible playback
 - Local saved-score library with persistent favourites and confirmed clearing

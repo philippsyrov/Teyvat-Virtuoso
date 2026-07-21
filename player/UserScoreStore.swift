@@ -15,9 +15,11 @@ struct Song: Codable, Equatable {
     let userProvided: Bool?
     // Persist whether a local performance belongs at the top of the personal library.
     let isFavorite: Bool
+    // Persist the exact timing multiplier chosen for a locally saved performance.
+    let playbackSpeed: Double?
 
     // Keep programmatic creation concise while defaulting old and new entries safely.
-    init(id: String, title: String, subtitle: String, file: String, userProvided: Bool? = nil, isFavorite: Bool = false) {
+    init(id: String, title: String, subtitle: String, file: String, userProvided: Bool? = nil, isFavorite: Bool = false, playbackSpeed: Double? = nil) {
         // Store the stable identity.
         self.id = id
         // Store the visible title.
@@ -30,12 +32,14 @@ struct Song: Codable, Equatable {
         self.userProvided = userProvided
         // Store the explicit favourite state.
         self.isFavorite = isFavorite
+        // Store nil for bundled or legacy entries whose speed was never recorded.
+        self.playbackSpeed = playbackSpeed
     }
 
     // Name every persisted field for backward-compatible custom decoding.
     private enum CodingKeys: String, CodingKey {
         // Preserve the existing manifest field names.
-        case id, title, subtitle, file, userProvided, isFavorite
+        case id, title, subtitle, file, userProvided, isFavorite, playbackSpeed
     }
 
     // Decode manifests written before favourites existed.
@@ -51,6 +55,8 @@ struct Song: Codable, Equatable {
         userProvided = try values.decodeIfPresent(Bool.self, forKey: .userProvided)
         // Treat a missing legacy favourite field as false.
         isFavorite = try values.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        // Preserve nil for old manifests because their former picker speed cannot be recovered.
+        playbackSpeed = try values.decodeIfPresent(Double.self, forKey: .playbackSpeed)
     }
 }
 
@@ -107,7 +113,7 @@ final class UserScoreStore {
     }
 
     // Save one generated reduction and append it to the local picker manifest.
-    func save(title: String, events: [ImportedScoreEvent]) throws -> Song {
+    func save(title: String, events: [ImportedScoreEvent], playbackSpeed: Double) throws -> Song {
         // Create the precise application and score folders when first needed.
         try FileManager.default.createDirectory(at: scoresDirectory, withIntermediateDirectories: true)
         // Use a unique filename so repeated saves never overwrite an earlier arrangement.
@@ -119,7 +125,8 @@ final class UserScoreStore {
             subtitle: "Imported MIDI · locally generated lyre score",
             file: filename,
             userProvided: true,
-            isFavorite: false
+            isFavorite: false,
+            playbackSpeed: playbackSpeed
         )
         // Encode readable JSON compatible with the bundled score schema.
         let encoder = JSONEncoder()
@@ -143,12 +150,32 @@ final class UserScoreStore {
             // Preserve every unrelated local entry exactly.
             guard song.id == id else { return song }
             // Copy all stable metadata while changing only the favourite flag.
-            return Song(id: song.id, title: song.title, subtitle: song.subtitle, file: song.file, userProvided: song.userProvided, isFavorite: isFavorite)
+            return Song(id: song.id, title: song.title, subtitle: song.subtitle, file: song.file, userProvided: song.userProvided, isFavorite: isFavorite, playbackSpeed: song.playbackSpeed)
         }
         // Sort and persist the complete valid local library atomically.
         let ordered = sorted(updated)
         try writeManifest(ordered)
         // Return the order the picker should display immediately.
+        return ordered
+    }
+
+    // Persist the timing selected for one existing local performance.
+    func setPlaybackSpeed(id: String, playbackSpeed: Double) throws -> [Song] {
+        // Read only valid current local entries.
+        let current = loadSongs()
+        // Reject stale IDs before writing a changed manifest.
+        guard current.contains(where: { $0.id == id }) else { throw UserScoreStoreError.songNotFound }
+        // Rebuild the matching immutable entry with its requested timing.
+        let updated = current.map { song in
+            // Preserve every unrelated local entry exactly.
+            guard song.id == id else { return song }
+            // Copy all stable metadata while changing only the saved speed.
+            return Song(id: song.id, title: song.title, subtitle: song.subtitle, file: song.file, userProvided: song.userProvided, isFavorite: song.isFavorite, playbackSpeed: playbackSpeed)
+        }
+        // Preserve favourite grouping and write the complete manifest atomically.
+        let ordered = sorted(updated)
+        try writeManifest(ordered)
+        // Return the same order the picker should display immediately.
         return ordered
     }
 
