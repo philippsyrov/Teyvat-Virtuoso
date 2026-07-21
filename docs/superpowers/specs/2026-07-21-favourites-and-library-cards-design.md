@@ -30,6 +30,13 @@ Keep community arrangements external and attributed, while making both collectio
 - Pressing `Stop` cancels playback through the existing controller, returns the active row to `Play`, and retains the global footer Stop as a secondary safety control.
 - Starting another score transfers the active state to that score without allowing two playback jobs at once.
 
+## Import-page layout
+
+- The `Advanced mapping` disclosure must keep its complete label; it may not compress to `A...`.
+- Source summary, enabled tracks, advanced controls, and actions use one shared page-column width.
+- When opened, advanced controls live in a full-width card with a fixed label column and equal-width controls. They do not float at the far right of the page.
+- `Preview` and `Save to My Library` share a compact action rail at the bottom of the import content.
+
 ## Verification
 
 - Unit tests cover shared favourite persistence, stable favourite-first ordering, and migration of existing local favourites.
