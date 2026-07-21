@@ -492,8 +492,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mergePicker.addItems(withTitles: ["Off", "15 ms", "25 ms", "40 ms"])
         // Use 25 ms because it matches the existing streaming-safe arrangements.
         mergePicker.selectItem(at: 2)
-        // Offer musically modest speed changes around the authored timing.
-        speedPicker.addItems(withTitles: ["Timing: relaxed 90%", "Timing: original 100%", "Timing: lively 110%"])
+        // Offer the authored timing plus progressively faster performance options.
+        speedPicker.addItems(withTitles: [
+            "Timing: relaxed 90%",
+            "Timing: original 100%",
+            "Timing: lively 110%",
+            "Timing: fast 125%",
+            "Timing: very fast 150%",
+            "Timing: rapid 175%",
+            "Timing: maximum 200%",
+        ])
         // Preserve original timing by default.
         speedPicker.selectItem(at: 1)
     }
@@ -821,6 +829,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch speedPicker.indexOfSelectedItem {
         case 0: return 0.90
         case 2: return 1.10
+        case 3: return 1.25
+        case 4: return 1.50
+        case 5: return 1.75
+        case 6: return 2.00
         default: return 1.00
         }
     }
