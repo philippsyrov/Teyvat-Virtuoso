@@ -110,6 +110,7 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("Snap black keys down", source)
         self.assertIn("Snap black keys up", source)
         self.assertIn("Merge nearby notes", source)
+        self.assertIn("Timing: maximum 200%", source)
         self.assertIn("play(score:", source)
 
     def test_native_app_exposes_smart_mapping_and_personal_library_controls(self):
