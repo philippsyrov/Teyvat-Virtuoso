@@ -14,6 +14,12 @@ The Community Collection continues to fetch exactly one arrangement only after t
 
 The Community Collection search field filters the combined catalogue. Favourites stay at the top. The initial display avoids creating thousands of AppKit cards at launch: it shows a bounded first page and a clear filtered-result count; typing searches all metadata. A lightweight **Load more** control reveals additional matching rows in fixed-size batches. Every revealed row retains the same fixed trailing action rail: source, heart, and Download/Play/Stop.
 
+## In-app listening and playback controls
+
+Each community and personal score card adds a compact **Listen** control to its existing trailing action rail. Listen plays a short, bundled synthetic lyre preview through macOS audio using the score's already converted keys and authored timing; it never sends keyboard events to Genshin. It uses a simple generated tone per mapped note rather than copied game audio samples, so the app stays small, works offline, and does not distribute game assets. Previewing a score makes its Listen control become **Stop**.
+
+The existing **Play** action remains the only control that sends mapped key presses to Genshin and becomes **Stop** while that score is active. The persistent footer keeps concise status text but loses its redundant Stop button, so playback always stops from the score card that started it.
+
 ## Direct Sky Music JSON import
 
 Rename the import page's visible entry point from MIDI-only wording to **Import Score** while retaining MIDI behaviour. The file picker and drag target accept `.mid`, `.midi`, `.txt`, and `.json`.
@@ -24,7 +30,7 @@ If the selected `.txt`/`.json` is not this exact format, leave the prior importe
 
 ## Tests and verification
 
-Tests cover decoding a direct local Sky Music sheet, rejecting invalid JSON/text without overwriting prior state, full-catalogue metadata containing no note payload, safe identities, and UI source contracts for the expanded import file types plus bounded community rendering. The existing conversion, cache, MIDI, favourite, and app-build tests remain green.
+Tests cover decoding a direct local Sky Music sheet, rejecting invalid JSON/text without overwriting prior state, full-catalogue metadata containing no note payload, safe identities, offline lyre-preview event scheduling, and UI source contracts for the expanded import file types, bounded community rendering, row-level Listen/Stop controls, and absent footer Stop button. The existing conversion, cache, MIDI, favourite, and app-build tests remain green.
 
 Before commit, run `python3 -m unittest tests/test_play_score.py` and `./scripts/build_app.sh`.
 
@@ -32,4 +38,4 @@ Before commit, run `python3 -m unittest tests/test_play_score.py` and `./scripts
 
 - Downloading every arrangement automatically or bundling any score payload.
 - Guessing missing song durations, arrangers, pitches, or parsing visual web sheets.
-- In-app audio preview, Windows support, accounts, playlists, or cloud sync.
+- Game-audio extraction, copied game audio samples, Windows support, accounts, playlists, or cloud sync.
