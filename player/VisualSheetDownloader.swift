@@ -51,7 +51,7 @@ final class VisualSheetDownloader: NSObject, WKNavigationDelegate {
           } else {
             const tables = Array.from(document.getElementsByTagName('table'));
             for (const table of tables.slice(1)) {
-              const cell = table.children[0]?.children[0];
+              const cell = table.children[0];
               if (!cell) continue;
               if (cell.children.length > 2) bump();
               let noteNumber = 0;
