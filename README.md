@@ -6,7 +6,7 @@ The app also works with other focused game windows that accept normal Mac keyboa
 
 ## Features
 
-- Native drag-and-drop and file-picker support for `.mid` and `.midi` files
+- Native drag-and-drop and file-picker support for MIDI plus Sky Music `.txt`/`.json` sheets
 - Per-track selection with note range and chord-density information
 - Automatic shared-transpose recommendation based on natural-note fit
 - Smart key-aware handling for unavailable black-key notes, with strict/up/down fallbacks
@@ -14,7 +14,7 @@ The app also works with other focused game windows that accept normal Mac keyboa
 - Source-tempo preservation with selectable playback speed from 90% through 200%
 - Per-song saved timing, including a one-click speed assignment for legacy library entries
 - Real simultaneous key-down events for chords of up to three notes
-- Five-second focus countdown and interruptible playback
+- Five-second focus countdown, card-level Stop, and offline generated-tone Listen previews
 - Local saved-score library with persistent favourites and confirmed clearing
 - A bundled, protected public-domain Aloha ʻOe demonstration arrangement
 
@@ -52,7 +52,7 @@ The build script creates a self-contained native app bundle under `build/`. The 
 ## Usage
 
 1. Open `Teyvat Virtuoso.app` and grant Accessibility permission if macOS requests it.
-2. Drag a MIDI onto the Import MIDI panel, or choose **Open MIDI…**.
+2. Drag a MIDI or exported Sky Music `.txt`/`.json` sheet onto Import Score, or choose **Open Score…**.
 3. Review the detected tracks. Disable percussion, duplicate orchestration, or parts that make the reduction too dense.
 4. Review the recommended transpose and detected key. **Smart — key-aware** is selected automatically; compare the legacy policies when a particular arrangement benefits from them.
 5. Choose a chord merge tolerance and playback timing.

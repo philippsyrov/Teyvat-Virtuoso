@@ -10,7 +10,7 @@ struct CommunityCatalogEntry: Codable, Equatable {
     // Credit the community arranger when the upstream source identifies one.
     let arranger: String?
     // Show a concise researched duration before downloading note data.
-    let durationSeconds: Int
+    let durationSeconds: Int?
     // Identify the upstream Sky Music arrangement without bundling its notes.
     let remoteFile: String
     // Link users back to the community source collection.

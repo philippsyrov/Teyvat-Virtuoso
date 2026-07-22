@@ -63,7 +63,7 @@ class ValidateScoreTests(unittest.TestCase):
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
         self.assertIn("NSPopUpButton", source)
-        self.assertIn("NSButton(title: \"Stop\"", source)
+        self.assertIn("actionTitle = isActive ? \"Stop\" : \"Play\"", source)
         self.assertIn("Bundle.main", source)
         self.assertIn("Timing: original 100%", source)
 
@@ -120,13 +120,28 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("CommunityLibraryTests passed", result.stdout)
 
+    def test_lyre_preview_planner_contract(self):
+        """Listen preview must preserve score timing and map the three keyboard rows."""
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "lyre-preview-tests"
+            subprocess.run([
+                "swiftc", str(root / "player" / "MidiEngine.swift"),
+                str(root / "player" / "LyrePreviewPlayer.swift"),
+                str(root / "tests" / "LyrePreviewPlayerTests.swift"),
+                "-o", str(executable), "-framework", "AVFoundation",
+            ], check=True)
+            result = subprocess.run([str(executable)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("LyrePreviewPlayerTests passed", result.stdout)
+
     def test_community_catalog_contains_metadata_without_note_payloads(self):
         """The repository may identify community work but must not redistribute its notes."""
         root = Path(__file__).parents[1]
         catalog_path = root / "scores" / "community" / "catalog.json"
         catalog_text = catalog_path.read_text()
         catalog = json.loads(catalog_text)
-        self.assertGreaterEqual(len(catalog["songs"]), 12)
+        self.assertGreaterEqual(len(catalog["songs"]), 600)
         self.assertNotIn("songNotes", catalog_text)
         for entry in catalog["songs"]:
             self.assertTrue(entry["id"])
@@ -139,7 +154,9 @@ class ValidateScoreTests(unittest.TestCase):
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
         self.assertIn("registerForDraggedTypes([.fileURL])", source)
-        self.assertIn("Open MIDI…", source)
+        self.assertIn("Open Score…", source)
+        self.assertIn('"txt", "json"', source)
+        self.assertIn("loadSkyMusicSheet", source)
         self.assertIn("Enabled tracks", source)
         self.assertIn("Strict — skip black keys", source)
         self.assertIn("Snap black keys down", source)
@@ -184,6 +201,11 @@ class ValidateScoreTests(unittest.TestCase):
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
         self.assertIn("CommunityScoreStore", source)
         self.assertIn("URLSession.shared.dataTask", source)
+        self.assertIn("communityVisibleLimit", source)
+        self.assertIn('"Load more"', source)
+        self.assertIn("communityListenAction", source)
+        self.assertIn("libraryListenAction", source)
+        self.assertNotIn('NSButton(title: "Stop", target: self, action: #selector(stopPlayback))', source)
         self.assertIn("creditLine", source)
         self.assertIn('"Open Source"', source)
         self.assertIn("NSWorkspace.shared.open", source)
