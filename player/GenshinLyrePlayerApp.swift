@@ -382,6 +382,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private let contentContainer = NSView()
     // Retain the community search and row stack for local filtering and cache refreshes.
     private let communitySearchField = NSSearchField()
+    // Filter personal saved performances locally without mixing in community results.
+    private let librarySearchField = NSSearchField()
     // Let people select the original visual-site folder category before browsing scores.
     private let communityCategoryPicker = NSPopUpButton(frame: .zero, pullsDown: false)
     private let communityRowsStack = NSStackView()
@@ -982,6 +984,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let introduction = makeSecondaryLabel("Your saved performances stay on this Mac. Community downloads remain in their own collection.")
         stack.addArrangedSubview(introduction)
         constrainToPageColumn(introduction, in: stack)
+        // Filter only this Mac's saved performances by title or descriptive credit text.
+        librarySearchField.placeholderString = "Search My Library"
+        librarySearchField.target = self
+        librarySearchField.action = #selector(filterLibrarySongs)
+        stack.addArrangedSubview(librarySearchField)
+        constrainToPageColumn(librarySearchField, in: stack)
         // Reuse the same compact, full-width card language as Community Collection.
         libraryRowsStack.orientation = .vertical
         libraryRowsStack.alignment = .leading
@@ -1011,8 +1019,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             libraryRowsStack.addArrangedSubview(makeSecondaryLabel("No saved performances yet. Import a MIDI to add one."))
             return
         }
-        // Build one favourite-aware personal card per bundled or locally generated score.
-        for (index, song) in songs.enumerated() {
+        // Normalise the optional local query before matching visible personal cards.
+        let query = librarySearchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // Keep indexes tied to the full favourite-first song list for card actions.
+        let matchingSongs = songs.enumerated().filter { _, song in
+            query.isEmpty || song.title.lowercased().contains(query) || song.subtitle.lowercased().contains(query)
+        }
+        // Explain an empty personal search without pretending saved music disappeared.
+        guard !matchingSongs.isEmpty else {
+            libraryRowsStack.addArrangedSubview(makeSecondaryLabel("No saved performances match this search."))
+            return
+        }
+        // Build one favourite-aware personal card per matching bundled or locally generated score.
+        for (index, song) in matchingSongs {
             // Draw the same restrained rounded card used for a community arrangement.
             let card = NSBox()
             card.boxType = .custom
@@ -1080,6 +1099,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             pageStack.frame.size.height = pageStack.fittingSize.height
         }
     }
+
+    // Rebuild only local library cards after a title/credit search change.
+    @objc private func filterLibrarySongs() { rebuildLibraryRows() }
 
     // Build the local MIDI import page with technical controls collapsed by default.
     private func makeImportView() -> NSView {

@@ -180,6 +180,8 @@ class ValidateScoreTests(unittest.TestCase):
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
         self.assertIn("Smart — key-aware", source)
         self.assertIn("toggleFavorite", source)
+        self.assertIn("Search My Library", source)
+        self.assertIn("filterLibrarySongs", source)
         self.assertNotIn("Set Saved Speed", source)
         self.assertIn("Clear Imported Library…", source)
         self.assertIn("NSAlert", source)
