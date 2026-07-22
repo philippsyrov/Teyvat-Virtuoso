@@ -120,6 +120,13 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("CommunityLibraryTests passed", result.stdout)
 
+    def test_visual_sheet_exporter_matches_legacy_table_layout(self):
+        """Legacy Sky Music pages must use the same table root as the source exporter."""
+        root = Path(__file__).parents[1]
+        source = (root / "player" / "VisualSheetDownloader.swift").read_text()
+        self.assertIn("const cell = table.children[0];", source)
+        self.assertNotIn("table.children[0]?.children[0]", source)
+
     def test_lyre_preview_planner_contract(self):
         """Listen preview must preserve score timing and map the three keyboard rows."""
         root = Path(__file__).parents[1]
