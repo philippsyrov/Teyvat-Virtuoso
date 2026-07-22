@@ -1,5 +1,7 @@
 // Import AppKit for the native window, controls, file picker, and drag-and-drop destination.
 import AppKit
+// Import AVFoundation for the offline generated lyre Listen preview.
+import AVFoundation
 // Import Foundation for JSON, files, timing, and background queues.
 import Foundation
 // Import CoreGraphics for true keyboard-down and keyboard-up events.
@@ -44,12 +46,12 @@ final class BorderlessSplitView: NSSplitView {
     override var dividerThickness: CGFloat { 0 }
 }
 
-// Present one obvious target for Finder MIDI files.
+// Present one obvious target for Finder MIDI or Sky Music sheet files.
 final class MidiDropView: NSView {
     // Deliver a validated dropped MIDI URL to the app delegate.
     var onFile: ((URL) -> Void)?
     // Keep the central instruction visible inside the custom view.
-    private let label = NSTextField(labelWithString: "Drop a .mid or .midi file here")
+    private let label = NSTextField(labelWithString: "Drop a MIDI or Sky Music .txt/.json sheet here")
 
     // Build the native drag destination once.
     override init(frame frameRect: NSRect) {
@@ -88,7 +90,7 @@ final class MidiDropView: NSView {
     // Prevent storyboard decoding because this app constructs every view in code.
     required init?(coder: NSCoder) { nil }
 
-    // Accept only file drags containing one supported MIDI extension.
+    // Accept only file drags containing one supported score extension.
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         // Highlight valid sources and reject every unrelated Finder item.
         guard midiURL(from: sender) != nil else { return [] }
@@ -116,7 +118,7 @@ final class MidiDropView: NSView {
         return true
     }
 
-    // Extract one local `.mid` or `.midi` file URL from a drag pasteboard.
+    // Extract one local MIDI or Sky Music-sheet URL from a drag pasteboard.
     private func midiURL(from sender: NSDraggingInfo) -> URL? {
         // Read the standard Finder file URL pasteboard object.
         guard let value = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self])?.first as? URL else {
@@ -124,8 +126,8 @@ final class MidiDropView: NSView {
         }
         // Compare extensions case-insensitively.
         let extensionName = value.pathExtension.lowercased()
-        // Accept exactly the two common Standard MIDI extensions.
-        return ["mid", "midi"].contains(extensionName) ? value : nil
+        // Accept MIDI plus exported Sky Music JSON-sheet extensions.
+        return ["mid", "midi", "txt", "json"].contains(extensionName) ? value : nil
     }
 }
 
@@ -357,7 +359,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private var visibleCommunityEntries: [CommunityCatalogEntry] = []
     // Store the currently imported MIDI document and its source filename.
     private var importedDocument: MidiDocument?
-    private var importedTitle = "Imported MIDI"
+    // Store a strict converted Sky Music sheet when no MIDI track controls apply.
+    private var directImportedScore: [AppScoreEvent]?
+    private var importedTitle = "Imported Score"
     private var importedFilename = "Imported MIDI"
     // Keep source track index to checkbox mappings.
     private var trackButtons: [Int: NSButton] = [:]
@@ -379,6 +383,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     // Retain the community search and row stack for local filtering and cache refreshes.
     private let communitySearchField = NSSearchField()
     private let communityRowsStack = NSStackView()
+    // Render the public catalogue in bounded batches instead of creating hundreds of cards at launch.
+    private var communityVisibleLimit = 50
+    // Explain how many matching arrangements remain behind Load more.
+    private let communityResultLabel = NSTextField(labelWithString: "")
     // Retain the personal-library card stack so hearts and playback state can redraw in place.
     private let libraryRowsStack = NSStackView()
     // Retain the collapsed advanced MIDI controls outside the main import hierarchy.
@@ -401,6 +409,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private let favoriteStore = FavoriteStore()
     // Own the cancellable native keyboard player.
     private let player = PlaybackController()
+    // Own generated local score listening without any keyboard events.
+    private let previewPlayer = LyrePreviewPlayer()
+    // Remember the one active generated-audio preview card.
+    private var activePreviewID: String?
     // Remember the one active card whose primary action should read Stop.
     private var activePlaybackID: String?
 
@@ -449,6 +461,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         // Rebuild only lightweight visible cards whenever their primary action changes state.
         player.onPlaybackChange = { [weak self] id in
             self?.activePlaybackID = id
+            self?.rebuildCommunityRows()
+            self?.rebuildLibraryRows()
+        }
+        // Reflect local Listen activity independently from keyboard playback.
+        previewPlayer.onStatus = { [weak self] text in self?.statusLabel.stringValue = text }
+        previewPlayer.onPlaybackChange = { [weak self] id in
+            self?.activePreviewID = id
             self?.rebuildCommunityRows()
             self?.rebuildLibraryRows()
         }
@@ -524,7 +543,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         footer.state = .active
         footer.translatesAutoresizingMaskIntoConstraints = false
         footer.heightAnchor.constraint(greaterThanOrEqualToConstant: 52).isActive = true
-        // Align status left and the immediate Stop action right.
+        // Keep concise status without duplicating each card's Stop action.
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
@@ -536,9 +555,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         statusLabel.lineBreakMode = .byTruncatingTail
         statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         row.addArrangedSubview(statusLabel)
-        let stopButton = NSButton(title: "Stop", target: self, action: #selector(stopPlayback))
-        stopButton.bezelStyle = .rounded
-        row.addArrangedSubview(stopButton)
+        // Keep Stop on the active score card instead of repeating it in this footer.
         footer.addSubview(row)
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: footer.leadingAnchor),
@@ -652,6 +669,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         communitySearchField.action = #selector(filterCommunitySongs)
         stack.addArrangedSubview(communitySearchField)
         constrainToPageColumn(communitySearchField, in: stack)
+        // Show search-result size before any person asks the page to create more rows.
+        communityResultLabel.textColor = .secondaryLabelColor
+        stack.addArrangedSubview(communityResultLabel)
+        constrainToPageColumn(communityResultLabel, in: stack)
         // Rebuild only this page's rows after search or cache changes.
         communityRowsStack.orientation = .vertical
         communityRowsStack.alignment = .leading
@@ -671,6 +692,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         }
         // Keep filled hearts at the top even after a person searches the catalog.
         visibleCommunityEntries = favoriteFirst(matchingEntries, id: { self.communityFavoriteID(for: $0) })
+        // Return to the small first batch whenever the query changes.
+        communityVisibleLimit = 50
         rebuildCommunityRows()
     }
 
@@ -686,8 +709,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             communityRowsStack.addArrangedSubview(makeSecondaryLabel("No arrangements match this search."))
             return
         }
-        // Build one restrained card for every visible curated entry.
-        for (index, entry) in visibleCommunityEntries.enumerated() {
+        // Explain total matches without forcing AppKit to build every card at once.
+        communityResultLabel.stringValue = "\(visibleCommunityEntries.count) arrangements · showing \(min(communityVisibleLimit, visibleCommunityEntries.count))"
+        // Build only the current bounded batch of matching metadata rows.
+        for (index, entry) in visibleCommunityEntries.prefix(communityVisibleLimit).enumerated() {
             let card = NSBox()
             card.boxType = .custom
             card.cornerRadius = 10
@@ -698,7 +723,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             // Keep long song names inside the text column instead of competing with the action rail.
             title.maximumNumberOfLines = 1
             title.lineBreakMode = .byTruncatingTail
-            let details = makeSecondaryLabel("\(formatDuration(Double(entry.durationSeconds) * 1_000)) · \(entry.creditLine)")
+            let detailText = entry.durationSeconds.map { "\(formatDuration(Double($0) * 1_000)) · \(entry.creditLine)" } ?? entry.creditLine
+            let details = makeSecondaryLabel(detailText)
             // Keep attribution on one clipped line so every card remains a stable compact height.
             details.maximumNumberOfLines = 1
             details.lineBreakMode = .byTruncatingTail
@@ -725,7 +751,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             heart.widthAnchor.constraint(equalToConstant: 36).isActive = true
             heart.bezelStyle = .inline
             heart.contentTintColor = favoriteStore.favoriteIDs().contains(communityFavoriteID(for: entry)) ? .systemPink : .secondaryLabelColor
-            let actions = NSStackView(views: [source, heart, action])
+            // Let Listen preview mapped local audio without sending keyboard events to Genshin.
+            let isPreviewing = activePreviewID == communityFavoriteID(for: entry)
+            let listen = NSButton(title: isPreviewing ? "Stop" : "Listen", target: self, action: #selector(communityListenAction(_:)))
+            listen.tag = index
+            listen.widthAnchor.constraint(equalToConstant: 70).isActive = true
+            let actions = NSStackView(views: [source, heart, listen, action])
             actions.orientation = .horizontal
             actions.spacing = 8
             actions.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -750,10 +781,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             communityRowsStack.addArrangedSubview(card)
             constrainToPageColumn(card, in: communityRowsStack, horizontalInset: 0)
         }
+        // Offer another bounded batch only when matching rows remain hidden.
+        if visibleCommunityEntries.count > communityVisibleLimit {
+            let loadMore = NSButton(title: "Load more", target: self, action: #selector(loadMoreCommunityRows(_:)))
+            communityRowsStack.addArrangedSubview(loadMore)
+            constrainToPageColumn(loadMore, in: communityRowsStack, horizontalInset: 0)
+        }
         // Resize the active community document after filtering or caching.
         if let pageStack = communityRowsStack.superview as? NSStackView {
             pageStack.frame.size.height = pageStack.fittingSize.height
         }
+    }
+
+    // Reveal one more small batch without changing search or favourite ordering.
+    @objc private func loadMoreCommunityRows(_ sender: NSButton) {
+        // Increase the rendering limit by one stable page size.
+        communityVisibleLimit += 50
+        // Rebuild only the visible community-card stack.
+        rebuildCommunityRows()
+    }
+
+    // Listen to a cached or freshly downloaded community score locally.
+    @objc private func communityListenAction(_ sender: NSButton) {
+        // Resolve the rendered row safely.
+        guard visibleCommunityEntries.indices.contains(sender.tag) else { return }
+        let entry = visibleCommunityEntries[sender.tag]
+        // Stop only this row's generated audio when Listen already owns it.
+        if activePreviewID == communityFavoriteID(for: entry) { previewPlayer.stop(); return }
+        // Require an explicit download before local previewing a community arrangement.
+        guard let score = communityScoreStore.cachedScore(for: entry) else {
+            statusLabel.stringValue = "Download \(entry.title) before listening to it."
+            return
+        }
+        // Avoid overlapping synthetic sound with live keyboard playback.
+        player.stop()
+        previewPlayer.play(score: score, title: entry.title, id: communityFavoriteID(for: entry))
     }
 
     // Download an uncached arrangement or play its already validated local conversion.
@@ -768,6 +830,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         }
         // Play a validated local cache immediately when available.
         if let score = communityScoreStore.cachedScore(for: entry) {
+            previewPlayer.stop(silent: true)
             player.play(score: score, title: entry.title, id: communityFavoriteID(for: entry), at: 1.00)
             return
         }
@@ -915,7 +978,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             heart.widthAnchor.constraint(equalToConstant: 36).isActive = true
             heart.bezelStyle = .inline
             heart.contentTintColor = favoriteStore.favoriteIDs().contains(libraryFavoriteID(for: song)) ? .systemPink : .secondaryLabelColor
-            let actions = NSStackView(views: [heart, action])
+            // Give local scores the same keyboard-free Listen affordance as community rows.
+            let isPreviewing = activePreviewID == libraryFavoriteID(for: song)
+            let listen = NSButton(title: isPreviewing ? "Stop" : "Listen", target: self, action: #selector(libraryListenAction(_:)))
+            listen.tag = index
+            listen.widthAnchor.constraint(equalToConstant: 70).isActive = true
+            let actions = NSStackView(views: [heart, listen, action])
             actions.orientation = .horizontal
             actions.spacing = 8
             actions.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -950,19 +1018,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private func makeImportView() -> NSView {
         // Present import as a separate focused workflow.
         let stack = FlippedStackView()
-        stack.addArrangedSubview(makeHeading("Import MIDI", size: 26))
-        let introduction = makeSecondaryLabel("Your MIDI stays local. Review its musical tracks before previewing or saving a reduction.")
+        stack.addArrangedSubview(makeHeading("Import Score", size: 26))
+        let introduction = makeSecondaryLabel("MIDI and Sky Music sheets stay local. Review tracks or import a timed sheet before previewing or saving.")
         stack.addArrangedSubview(introduction)
         constrainToPageColumn(introduction, in: stack)
         // Add a large but bounded native drag destination.
         let dropView = MidiDropView(frame: NSRect(x: 0, y: 0, width: 620, height: 112))
-        dropView.onFile = { [weak self] url in self?.loadMidi(url) }
+        dropView.onFile = { [weak self] url in self?.loadScore(url) }
         dropView.heightAnchor.constraint(equalToConstant: 112).isActive = true
         let sourceCard = makeImportCard(dropView)
         stack.addArrangedSubview(sourceCard)
         constrainToPageColumn(sourceCard, in: stack)
         // Keep file selection aligned to the same full-width source card.
-        let openMidiButton = NSButton(title: "Open MIDI…", target: self, action: #selector(openMidi))
+        let openMidiButton = NSButton(title: "Open Score…", target: self, action: #selector(openMidi))
         stack.addArrangedSubview(openMidiButton)
         // Show concise source analysis before technical reduction controls.
         importSummaryLabel.textColor = .secondaryLabelColor
@@ -1063,6 +1131,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             // Preserve each persisted local favourite without changing its generated score.
             try? favoriteStore.setFavorite(libraryFavoriteID(for: song), isFavorite: true)
         }
+    }
+
+    // Decode a personal score for Listen using the same bundle/Application Support boundary as playback.
+    private func loadScoreForListening(_ song: Song) -> [AppScoreEvent]? {
+        // Resolve user-generated scores locally and bundled public scores from Resources.
+        let url = song.userProvided == true ? userScoreStore.scoreURL(for: song.file) : Bundle.main.url(forResource: song.file, withExtension: nil)
+        // Decode only the ordinary validated score-event schema.
+        guard let url, let score = try? JSONDecoder().decode([AppScoreEvent].self, from: Data(contentsOf: url)), !score.isEmpty else { return nil }
+        // Return events for generated audio; this path does not request Accessibility access.
+        return score
     }
 
     // Namespace every personal score identity away from metadata-only community entries.
@@ -1244,8 +1322,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         }
         // Preserve local saved timing while bundled scores use the normal current speed.
         let speed = song.playbackSpeed ?? (song.userProvided == true ? 1.00 : selectedSpeed)
+        // Stop any generated preview before sending real keyboard input to Genshin.
+        previewPlayer.stop(silent: true)
         // Start through the common player with this card's stable shared identity.
         player.play(song, id: libraryFavoriteID(for: song), at: speed)
+    }
+
+    // Listen to a personal score locally without requiring Accessibility permission.
+    @objc private func libraryListenAction(_ sender: NSButton) {
+        // Resolve the visible personal card safely.
+        guard songs.indices.contains(sender.tag) else { return }
+        let song = songs[sender.tag]
+        let id = libraryFavoriteID(for: song)
+        // Stop the active generated preview from this same card.
+        if activePreviewID == id { previewPlayer.stop(); return }
+        // Decode a bundled or locally saved score through the existing safe loader.
+        guard let score = loadScoreForListening(song) else {
+            statusLabel.stringValue = "Could not load \(song.title) for listening."
+            return
+        }
+        // Stop only keyboard playback before beginning local audio.
+        player.stop()
+        previewPlayer.play(score: score, title: song.title, id: id, at: song.playbackSpeed ?? 1.0)
     }
 
     // Toggle one personal card's heart and immediately restore favourite-first order.
@@ -1288,7 +1386,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         return row
     }
 
-    // Open a native file picker for Standard MIDI files.
+    // Open a native file picker for MIDI or exported Sky Music sheets.
     @objc private func openMidi() {
         // Create one ordinary macOS open panel.
         let panel = NSOpenPanel()
@@ -1296,10 +1394,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        // Restrict visible choices to common MIDI extensions.
-        panel.allowedContentTypes = ["mid", "midi"].compactMap { UTType(filenameExtension: $0) }
-        // Load the chosen file after the sheet closes successfully.
-        if panel.runModal() == .OK, let url = panel.url { loadMidi(url) }
+        // Restrict visible choices to supported MIDI and Sky Music sheet extensions.
+        panel.allowedContentTypes = ["mid", "midi", "txt", "json"].compactMap { UTType(filenameExtension: $0) }
+        // Load the chosen score only after the sheet closes successfully.
+        if panel.runModal() == .OK, let url = panel.url { loadScore(url) }
+    }
+
+    // Dispatch a dropped or selected file to its strict supported score reader.
+    private func loadScore(_ url: URL) {
+        // Route exported Sky Music sheets through their native timed-key converter.
+        if ["txt", "json"].contains(url.pathExtension.lowercased()) { loadSkyMusicSheet(url) } else { loadMidi(url) }
     }
 
     // Parse and display one dropped or selected MIDI file.
@@ -1314,6 +1418,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             }
             // Store the parsed document only in memory.
             importedDocument = document
+            // Replace any earlier direct-sheet conversion with this MIDI document.
+            directImportedScore = nil
             // Use the source filename as the performance title.
             importedTitle = url.deletingPathExtension().lastPathComponent
             // Preserve the complete filename for the live analysis summary.
@@ -1338,6 +1444,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             saveImportedButton.isEnabled = false
             // Show the parser's direct explanation.
             statusLabel.stringValue = error.localizedDescription
+        }
+    }
+
+    // Decode one exported Sky Music JSON/text sheet without copying the source file.
+    private func loadSkyMusicSheet(_ url: URL) {
+        do {
+            // Read and validate the established one-song array wrapper exactly.
+            let source = try CommunitySourceSong.decodeResponse(Data(contentsOf: url))
+            let score = try source.makeScore()
+            // Commit state only after every conversion boundary has passed.
+            directImportedScore = score
+            importedDocument = nil
+            importedTitle = source.name
+            importedFilename = url.lastPathComponent
+            // Remove MIDI-only track controls because this format is already key-mapped.
+            rebuildTrackButtons([])
+            tracksStack.addArrangedSubview(makeSecondaryLabel("Sky Music sheet — timing and chords preserved."))
+            importSummaryLabel.stringValue = "\(importedFilename) • \(score.count) timed lyre events • ready to preview or save"
+            playImportedButton.isEnabled = true
+            saveImportedButton.isEnabled = true
+            statusLabel.stringValue = "Sky Music sheet imported locally. No source file was copied."
+        } catch {
+            // Preserve the previous successfully loaded score on a malformed text/JSON file.
+            statusLabel.stringValue = "This is not a supported Sky Music exported sheet: \(error.localizedDescription)"
         }
     }
 
@@ -1371,6 +1501,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
 
     // Refresh selected-track fit and detected key after import-option changes.
     @objc private func refreshImportSummary() {
+        // Explain an already-converted direct Sky Music sheet without MIDI-only analysis.
+        if let directImportedScore {
+            importSummaryLabel.stringValue = "\(importedFilename) • \(directImportedScore.count) timed lyre events • ready to preview or save"
+            return
+        }
         // Leave the initial instruction untouched before a MIDI is loaded.
         guard let document = importedDocument else { return }
         // Read the exact source tracks currently enabled in the UI.
@@ -1395,6 +1530,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
 
     // Convert current controls into one deterministic score.
     private func importedScore() -> [AppScoreEvent]? {
+        // Return a direct source conversion before consulting MIDI-only controls.
+        if let directImportedScore { return directImportedScore }
         // Require an analysed document.
         guard let document = importedDocument else { return nil }
         // Keep only track indexes whose checkbox remains enabled.
@@ -1426,6 +1563,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     @objc private func playImported() {
         // Generate the score from current visible options.
         guard let score = importedScore() else { return }
+        // Stop local Listen audio before sending the imported score as keyboard input.
+        previewPlayer.stop(silent: true)
         // Play without writing or copying the source MIDI.
         player.play(score: score, title: importedTitle, id: "import:preview", at: selectedSpeed)
     }
