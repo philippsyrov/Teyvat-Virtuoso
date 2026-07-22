@@ -187,6 +187,10 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("NSAlert", source)
         self.assertIn("userScoreStore.clear()", source)
         self.assertIn("detectedKey", source)
+        self.assertIn("removeLibrarySong", source)
+        self.assertIn('"Delete"', source)
+        self.assertIn("listenImported", source)
+        self.assertIn('"Listen"', source)
 
     def test_native_app_separates_community_library_and_import_destinations(self):
         """A native sidebar must replace the crowded single-page workbench."""

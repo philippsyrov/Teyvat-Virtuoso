@@ -403,6 +403,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private lazy var playImportedButton = NSButton(title: "Preview — 5 second focus time", target: self, action: #selector(playImported))
     // Store the generated-score persistence action.
     private lazy var saveImportedButton = NSButton(title: "Save to My Library", target: self, action: #selector(saveImported))
+    // Let an imported score be heard locally before sending keys or saving it.
+    private lazy var listenImportedButton = NSButton(title: "Listen", target: self, action: #selector(listenImported))
     // Store the selected local song's persistent favourite action.
     private lazy var favoriteButton = NSButton(title: "♡ Favourite", target: self, action: #selector(toggleFavorite))
     // Own the local Application Support score store.
@@ -476,6 +478,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             self?.activePreviewID = id
             self?.rebuildCommunityRows()
             self?.rebuildLibraryRows()
+            self?.updateImportedListenButton()
         }
         // Show and activate the app.
         window.makeKeyAndOrderFront(nil)
@@ -1069,7 +1072,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             let listen = NSButton(title: isPreviewing ? "Stop" : "Listen", target: self, action: #selector(libraryListenAction(_:)))
             listen.tag = index
             listen.widthAnchor.constraint(equalToConstant: 70).isActive = true
-            let actions = NSStackView(views: [heart, listen, action])
+            // Offer individual deletion only for locally generated scores; bundled Aloha remains protected.
+            let actions = NSStackView()
+            actions.orientation = .horizontal
+            actions.spacing = 8
+            if song.userProvided == true {
+                let delete = NSButton(title: "Delete", target: self, action: #selector(removeLibrarySong(_:)))
+                delete.tag = index
+                delete.widthAnchor.constraint(equalToConstant: 62).isActive = true
+                actions.addArrangedSubview(delete)
+            }
+            actions.addArrangedSubview(heart)
+            actions.addArrangedSubview(listen)
+            actions.addArrangedSubview(action)
             actions.orientation = .horizontal
             actions.spacing = 8
             actions.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -1156,8 +1171,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let advancedMappingCard = makeImportCard(advancedMappingStack)
         stack.addArrangedSubview(advancedMappingCard)
         constrainToPageColumn(advancedMappingCard, in: stack)
-        playImportedButton.isEnabled = importedDocument != nil
-        saveImportedButton.isEnabled = importedDocument != nil
+        playImportedButton.isEnabled = importedDocument != nil || directImportedScore != nil
+        listenImportedButton.isEnabled = importedDocument != nil || directImportedScore != nil
+        saveImportedButton.isEnabled = importedDocument != nil || directImportedScore != nil
+        updateImportedListenButton()
         let actionCard = makeImportCard(makeImportedButtons())
         stack.addArrangedSubview(actionCard)
         constrainToPageColumn(actionCard, in: stack)
@@ -1453,6 +1470,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         }
     }
 
+    // Confirm and remove one locally generated library score without touching bundled work.
+    @objc private func removeLibrarySong(_ sender: NSButton) {
+        // Resolve the stable local entry before displaying a destructive confirmation.
+        guard songs.indices.contains(sender.tag), songs[sender.tag].userProvided == true else { return }
+        let song = songs[sender.tag]
+        // State the local-only removal boundary plainly.
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Delete saved song?"
+        alert.informativeText = "This removes the locally saved arrangement for \(song.title). Your original MIDI file stays untouched."
+        alert.addButton(withTitle: "Delete Song")
+        alert.addButton(withTitle: "Cancel")
+        // Leave all local files intact when the dialog is dismissed or cancelled.
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            // Stop the exact card before removing its generated score file.
+            if activePlaybackID == libraryFavoriteID(for: song) { player.stop() }
+            if activePreviewID == libraryFavoriteID(for: song) { previewPlayer.stop(silent: true) }
+            // Remove its shared heart so a future saved score cannot inherit it accidentally.
+            try favoriteStore.setFavorite(libraryFavoriteID(for: song), isFavorite: false)
+            // Delete only the selected local JSON and its manifest entry.
+            try userScoreStore.remove(id: song.id)
+            // Rebuild with the closest protected fallback selection.
+            refreshLibrary(selectingID: "aloha_oe")
+            statusLabel.stringValue = "Deleted saved song: \(song.title)."
+        } catch {
+            statusLabel.stringValue = "Could not delete \(song.title): \(error.localizedDescription)"
+        }
+    }
+
     // Build imported-score Play and Stop buttons.
     private func makeImportedButtons() -> NSStackView {
         // Create the horizontal action row.
@@ -1461,6 +1508,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         row.spacing = 10
         // Add the live imported-score action.
         row.addArrangedSubview(playImportedButton)
+        // Let the current import be heard locally before keyboard playback or saving.
+        row.addArrangedSubview(listenImportedButton)
         // Save only generated JSON key events, never the source MIDI.
         row.addArrangedSubview(saveImportedButton)
         // Return the ready row.
@@ -1515,14 +1564,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             refreshImportSummary()
             // Enable live conversion and playback.
             playImportedButton.isEnabled = true
+            listenImportedButton.isEnabled = true
             saveImportedButton.isEnabled = true
+            updateImportedListenButton()
             // Confirm the safe read-only import.
             statusLabel.stringValue = "MIDI analysed locally. Review tracks and mapping, then play it."
         } catch {
             // Clear stale imported state after a failed parse.
             importedDocument = nil
+            directImportedScore = nil
             playImportedButton.isEnabled = false
+            listenImportedButton.isEnabled = false
             saveImportedButton.isEnabled = false
+            updateImportedListenButton()
             // Show the parser's direct explanation.
             statusLabel.stringValue = error.localizedDescription
         }
@@ -1544,7 +1598,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             tracksStack.addArrangedSubview(makeSecondaryLabel("Sky Music sheet — timing and chords preserved."))
             importSummaryLabel.stringValue = "\(importedFilename) • \(score.count) timed lyre events • ready to preview or save"
             playImportedButton.isEnabled = true
+            listenImportedButton.isEnabled = true
             saveImportedButton.isEnabled = true
+            updateImportedListenButton()
             statusLabel.stringValue = "Sky Music sheet imported locally. No source file was copied."
         } catch {
             // Preserve the previous successfully loaded score on a malformed text/JSON file.
@@ -1648,6 +1704,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         previewPlayer.stop(silent: true)
         // Play without writing or copying the source MIDI.
         player.play(score: score, title: importedTitle, id: "import:preview", at: selectedSpeed)
+    }
+
+    // Listen to the current imported mapping locally without sending any keyboard input.
+    @objc private func listenImported() {
+        // Let the active importer Listen control stop its own generated audio.
+        if activePreviewID == "import:listen" {
+            previewPlayer.stop()
+            return
+        }
+        // Build the exact current track and mapping selection before scheduling sound.
+        guard let score = importedScore() else { return }
+        // Keep keyboard playback silent while the local preview begins.
+        player.stop()
+        // Play generated lyre tones at the same visible imported-score timing.
+        previewPlayer.play(score: score, title: importedTitle, id: "import:listen", at: selectedSpeed)
+    }
+
+    // Keep the importer Listen control in sync with the independent generated-audio state.
+    private func updateImportedListenButton() {
+        // Change only the importer control while its own local preview is active.
+        listenImportedButton.title = activePreviewID == "import:listen" ? "Stop" : "Listen"
     }
 
     // Save the current generated reduction to the user's local picker library.
