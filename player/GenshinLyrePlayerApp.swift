@@ -750,13 +750,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             heart.tag = index
             heart.widthAnchor.constraint(equalToConstant: 36).isActive = true
             heart.bezelStyle = .inline
-            heart.contentTintColor = favoriteStore.favoriteIDs().contains(communityFavoriteID(for: entry)) ? .systemPink : .secondaryLabelColor
+            heart.contentTintColor = favoriteStore.favoriteIDs().contains(communityFavoriteID(for: entry)) ? .systemRed : .secondaryLabelColor
             // Let Listen preview mapped local audio without sending keyboard events to Genshin.
             let isPreviewing = activePreviewID == communityFavoriteID(for: entry)
             let listen = NSButton(title: isPreviewing ? "Stop" : "Listen", target: self, action: #selector(communityListenAction(_:)))
             listen.tag = index
             listen.widthAnchor.constraint(equalToConstant: 70).isActive = true
-            let actions = NSStackView(views: [source, heart, listen, action])
+            // Offer local cache cleanup only after this exact score was downloaded.
+            let removeDownload = NSButton(title: "•••", target: self, action: #selector(communityMoreAction(_:)))
+            removeDownload.tag = index
+            removeDownload.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            removeDownload.isHidden = !communityScoreStore.isCached(entry)
+            let actions = NSStackView(views: [source, heart, removeDownload, listen, action])
             actions.orientation = .horizontal
             actions.spacing = 8
             actions.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -816,6 +821,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         // Avoid overlapping synthetic sound with live keyboard playback.
         player.stop()
         previewPlayer.play(score: score, title: entry.title, id: communityFavoriteID(for: entry))
+    }
+
+    // Confirm removal of one downloaded conversion without changing its remote catalogue entry.
+    @objc private func communityMoreAction(_ sender: NSButton) {
+        // Resolve the exact cached card before showing any destructive confirmation.
+        guard visibleCommunityEntries.indices.contains(sender.tag) else { return }
+        let entry = visibleCommunityEntries[sender.tag]
+        // Make the local-only deletion boundary visible before performing it.
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Remove downloaded score?"
+        alert.informativeText = "This removes only the local copy of \(entry.title). It stays listed and can be downloaded again later."
+        alert.addButton(withTitle: "Remove Download")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            // Stop active modes before deleting the exact locally converted score.
+            if activePlaybackID == communityFavoriteID(for: entry) { player.stop() }
+            if activePreviewID == communityFavoriteID(for: entry) { previewPlayer.stop(silent: true) }
+            try communityScoreStore.remove(entry: entry)
+            statusLabel.stringValue = "Removed local download for \(entry.title)."
+            rebuildCommunityRows()
+        } catch {
+            statusLabel.stringValue = "Could not remove \(entry.title): \(error.localizedDescription)"
+        }
     }
 
     // Download an uncached arrangement or play its already validated local conversion.
@@ -977,7 +1007,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             heart.tag = index
             heart.widthAnchor.constraint(equalToConstant: 36).isActive = true
             heart.bezelStyle = .inline
-            heart.contentTintColor = favoriteStore.favoriteIDs().contains(libraryFavoriteID(for: song)) ? .systemPink : .secondaryLabelColor
+            heart.contentTintColor = favoriteStore.favoriteIDs().contains(libraryFavoriteID(for: song)) ? .systemRed : .secondaryLabelColor
             // Give local scores the same keyboard-free Listen affordance as community rows.
             let isPreviewing = activePreviewID == libraryFavoriteID(for: song)
             let listen = NSButton(title: isPreviewing ? "Stop" : "Listen", target: self, action: #selector(libraryListenAction(_:)))
@@ -1055,24 +1085,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let tracksCard = makeImportCard(tracksContent)
         stack.addArrangedSubview(tracksCard)
         constrainToPageColumn(tracksCard, in: stack)
-        // Hide mapping detail until the user explicitly asks for it.
-        advancedMappingDisclosure.setButtonType(.onOff)
-        advancedMappingDisclosure.bezelStyle = .disclosure
-        advancedMappingDisclosure.state = .off
-        advancedMappingDisclosure.setContentHuggingPriority(.required, for: .horizontal)
-        advancedMappingDisclosure.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // Keep mapping controls permanently visible so the old disclosure cannot collapse into `A...`.
         advancedMappingStack.orientation = .vertical
         advancedMappingStack.alignment = .leading
-        advancedMappingStack.spacing = 8
+        advancedMappingStack.spacing = 10
         if advancedMappingStack.arrangedSubviews.isEmpty {
+            advancedMappingStack.addArrangedSubview(makeHeading("Mapping settings", size: 15))
             advancedMappingStack.addArrangedSubview(makeImportGrid())
         }
-        advancedMappingStack.isHidden = true
-        let advancedContent = NSStackView(views: [advancedMappingDisclosure, advancedMappingStack])
-        advancedContent.orientation = .vertical
-        advancedContent.alignment = .leading
-        advancedContent.spacing = 10
-        let advancedMappingCard = makeImportCard(advancedContent)
+        advancedMappingStack.isHidden = false
+        let advancedMappingCard = makeImportCard(advancedMappingStack)
         stack.addArrangedSubview(advancedMappingCard)
         constrainToPageColumn(advancedMappingCard, in: stack)
         playImportedButton.isEnabled = importedDocument != nil

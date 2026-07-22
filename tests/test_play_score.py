@@ -215,8 +215,10 @@ class ValidateScoreTests(unittest.TestCase):
         """Technical MIDI controls should not dominate the default import screen."""
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
-        self.assertIn('"Advanced mapping"', source)
-        self.assertIn("advancedMappingStack.isHidden = true", source)
+        self.assertIn('"Mapping settings"', source)
+        self.assertIn("advancedMappingStack.isHidden = false", source)
+        self.assertIn("communityMoreAction", source)
+        self.assertIn("systemRed", source)
         self.assertIn('"Preview — 5 second focus time"', source)
         self.assertIn('"Save to My Library"', source)
 
@@ -312,7 +314,7 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn('let actionTitle = isActive ? "Stop"', source)
         self.assertIn("player.onPlaybackChange", source)
         self.assertIn('NSButton(title: "♥"', source)
-        self.assertIn("advancedMappingDisclosure.setContentCompressionResistancePriority(.required, for: .horizontal)", source)
+        self.assertNotIn("advancedMappingDisclosure.setContentCompressionResistancePriority(.required, for: .horizontal)", source)
         self.assertIn("makeImportCard", source)
 
     def test_build_binds_the_stable_bundle_identity(self):
