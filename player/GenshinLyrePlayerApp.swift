@@ -775,12 +775,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             let listen = NSButton(title: isPreviewing ? "Stop" : "Listen", target: self, action: #selector(communityListenAction(_:)))
             listen.tag = index
             listen.widthAnchor.constraint(equalToConstant: 70).isActive = true
-            // Offer local cache cleanup only after this exact score was downloaded.
-            let removeDownload = NSButton(title: "•••", target: self, action: #selector(communityMoreAction(_:)))
-            removeDownload.tag = index
-            removeDownload.widthAnchor.constraint(equalToConstant: 36).isActive = true
-            removeDownload.isHidden = !communityScoreStore.isCached(entry)
-            let actions = NSStackView(views: [source, heart, removeDownload, listen, action])
+            // Keep downloaded-score file actions in one compact menu beside the card heart.
+            let downloadedActions = NSPopUpButton(frame: .zero, pullsDown: true)
+            downloadedActions.addItem(withTitle: "•••")
+            downloadedActions.addItem(withTitle: "Export MIDI…")
+            downloadedActions.addItem(withTitle: "Remove Download…")
+            downloadedActions.item(at: 1)?.target = self
+            downloadedActions.item(at: 1)?.action = #selector(exportCommunityMidi(_:))
+            downloadedActions.item(at: 1)?.tag = index
+            downloadedActions.item(at: 2)?.target = self
+            downloadedActions.item(at: 2)?.action = #selector(communityMoreAction(_:))
+            downloadedActions.item(at: 2)?.tag = index
+            downloadedActions.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            downloadedActions.isHidden = !communityScoreStore.isCached(entry)
+            let actions = NSStackView(views: [source, heart, downloadedActions, listen, action])
             actions.orientation = .horizontal
             actions.spacing = 8
             actions.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -842,8 +850,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         previewPlayer.play(score: score, title: entry.title, id: communityFavoriteID(for: entry))
     }
 
+    // Export one cached mapped community score as an editable Standard MIDI file in Downloads.
+    @objc private func exportCommunityMidi(_ sender: NSMenuItem) {
+        // Resolve the exact downloaded card rather than an unfiltered catalogue index.
+        guard visibleCommunityEntries.indices.contains(sender.tag) else { return }
+        let entry = visibleCommunityEntries[sender.tag]
+        // Require the existing local cache so this action never downloads source notes implicitly.
+        guard let score = communityScoreStore.cachedScore(for: entry) else {
+            statusLabel.stringValue = "Download \(entry.title) before exporting MIDI."
+            return
+        }
+        do {
+            // Convert only the mapped local event cache to a normal editable `.mid` file.
+            let data = try EditableMidiExporter.makeFile(score: score)
+            // Resolve the person's normal Downloads folder without opening a save panel.
+            let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
+            // Keep a Finder-safe title while making repeated exports non-destructive.
+            let stem = entry.title.replacingOccurrences(of: "[^A-Za-z0-9 _-]", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+            let baseName = stem.isEmpty ? "Teyvat Virtuoso score" : stem
+            var destination = downloads.appendingPathComponent("\(baseName).mid")
+            var suffix = 2
+            while FileManager.default.fileExists(atPath: destination.path) {
+                destination = downloads.appendingPathComponent("\(baseName) \(suffix).mid")
+                suffix += 1
+            }
+            // Write one new editable MIDI file without mutating the cached score or its source link.
+            try data.write(to: destination, options: .atomic)
+            statusLabel.stringValue = "Exported editable MIDI to Downloads: \(destination.lastPathComponent)"
+        } catch {
+            statusLabel.stringValue = "Could not export MIDI: \(error.localizedDescription)"
+        }
+    }
+
     // Confirm removal of one downloaded conversion without changing its remote catalogue entry.
-    @objc private func communityMoreAction(_ sender: NSButton) {
+    @objc private func communityMoreAction(_ sender: NSMenuItem) {
         // Resolve the exact cached card before showing any destructive confirmation.
         guard visibleCommunityEntries.indices.contains(sender.tag) else { return }
         let entry = visibleCommunityEntries[sender.tag]
