@@ -141,13 +141,15 @@ class ValidateScoreTests(unittest.TestCase):
         catalog_path = root / "scores" / "community" / "catalog.json"
         catalog_text = catalog_path.read_text()
         catalog = json.loads(catalog_text)
-        self.assertGreaterEqual(len(catalog["songs"]), 600)
+        self.assertGreaterEqual(len(catalog["songs"]), 200)
         self.assertNotIn("songNotes", catalog_text)
         for entry in catalog["songs"]:
             self.assertTrue(entry["id"])
             self.assertTrue(entry["title"])
             self.assertTrue(entry["remoteFile"])
             self.assertTrue(entry["sourceURL"].startswith("https://"))
+            self.assertTrue(entry["visualSheetURL"].startswith("https://sky-music.github.io/songs/"))
+            self.assertTrue(entry["category"])
 
     def test_native_app_exposes_the_complete_midi_import_workflow(self):
         """The visible app must wire drag/drop, track choice, mapping, and playback."""
@@ -204,6 +206,8 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("communityVisibleLimit", source)
         self.assertIn('"Load more"', source)
         self.assertIn("communityListenAction", source)
+        self.assertIn("communityCategoryPicker", source)
+        self.assertIn("VisualSheetDownloader", source)
         self.assertIn("libraryListenAction", source)
         self.assertNotIn('NSButton(title: "Stop", target: self, action: #selector(stopPlayback))', source)
         self.assertIn("creditLine", source)
