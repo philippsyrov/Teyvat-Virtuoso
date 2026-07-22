@@ -73,6 +73,13 @@ struct UserScoreStoreTests {
             storeExpect(error.localizedDescription.contains("not found"), "expected readable unknown-ID error")
         }
 
+        // Remove one saved arrangement without touching another saved score or its manifest entry.
+        try store.remove(id: saved.id)
+        // Confirm the deleted local score can no longer be selected after a fresh store load.
+        storeExpect(!UserScoreStore(root: root).loadSongs().contains(where: { $0.id == saved.id }), "expected selected saved song to be removed")
+        // Preserve the unrelated legacy arrangement during individual deletion.
+        storeExpect(UserScoreStore(root: root).loadSongs().contains(where: { $0.id == "legacy" }), "expected individual delete to preserve other saved songs")
+
         // Place an unrelated sibling outside the injected app root.
         let sibling = parent.appendingPathComponent("outside.txt")
         // Give it content so existence proves the clear boundary.
