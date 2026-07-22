@@ -15,6 +15,10 @@ struct CommunityCatalogEntry: Codable, Equatable {
     let remoteFile: String
     // Link users back to the community source collection.
     let sourceURL: String
+    // Keep the original visual sheet page for on-demand JSON export when available.
+    var visualSheetURL: String? = nil
+    // Preserve the source website category without inventing a genre.
+    var category: String? = nil
 
     // Present honest attribution even when upstream authorship is missing.
     var creditLine: String {

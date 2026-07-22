@@ -382,6 +382,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private let contentContainer = NSView()
     // Retain the community search and row stack for local filtering and cache refreshes.
     private let communitySearchField = NSSearchField()
+    // Let people select the original visual-site folder category before browsing scores.
+    private let communityCategoryPicker = NSPopUpButton(frame: .zero, pullsDown: false)
     private let communityRowsStack = NSStackView()
     // Render the public catalogue in bounded batches instead of creating hundreds of cards at launch.
     private var communityVisibleLimit = 50
@@ -411,6 +413,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private let player = PlaybackController()
     // Own generated local score listening without any keyboard events.
     private let previewPlayer = LyrePreviewPlayer()
+    // Export visual pages through the source site's own JSON notation rules.
+    private let visualSheetDownloader = VisualSheetDownloader()
     // Remember the one active generated-audio preview card.
     private var activePreviewID: String?
     // Remember the one active card whose primary action should read Stop.
@@ -669,6 +673,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         communitySearchField.action = #selector(filterCommunitySongs)
         stack.addArrangedSubview(communitySearchField)
         constrainToPageColumn(communitySearchField, in: stack)
+        // Populate the original source folders once and filter cards by the selected category.
+        communityCategoryPicker.removeAllItems()
+        communityCategoryPicker.addItem(withTitle: "All categories")
+        communityCategoryPicker.addItems(withTitles: Array(Set(communityCatalog.compactMap(\.category))).sorted())
+        communityCategoryPicker.target = self
+        communityCategoryPicker.action = #selector(filterCommunitySongs)
+        stack.addArrangedSubview(communityCategoryPicker)
         // Show search-result size before any person asks the page to create more rows.
         communityResultLabel.textColor = .secondaryLabelColor
         stack.addArrangedSubview(communityResultLabel)
@@ -687,8 +698,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     @objc private func filterCommunitySongs() {
         // Normalise user text for a forgiving local contains search.
         let query = communitySearchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let matchingEntries = query.isEmpty ? communityCatalog : communityCatalog.filter {
-            $0.title.lowercased().contains(query) || ($0.arranger?.lowercased().contains(query) ?? false)
+        let selectedCategory = communityCategoryPicker.titleOfSelectedItem
+        let matchingEntries = communityCatalog.filter {
+            let textMatches = query.isEmpty || $0.title.lowercased().contains(query) || ($0.arranger?.lowercased().contains(query) ?? false)
+            let categoryMatches = selectedCategory == nil || selectedCategory == "All categories" || $0.category == selectedCategory
+            return textMatches && categoryMatches
         }
         // Keep filled hearts at the top even after a person searches the catalog.
         visibleCommunityEntries = favoriteFirst(matchingEntries, id: { self.communityFavoriteID(for: $0) })
@@ -862,6 +876,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         if let score = communityScoreStore.cachedScore(for: entry) {
             previewPlayer.stop(silent: true)
             player.play(score: score, title: entry.title, id: communityFavoriteID(for: entry), at: 1.00)
+            return
+        }
+        // Export categorised visual sheets with the source website's own JSON rules.
+        if let source = entry.visualSheetURL, let pageURL = URL(string: source) {
+            sender.isEnabled = false
+            statusLabel.stringValue = "Downloading \(entry.title)…"
+            visualSheetDownloader.download(from: pageURL) { [weak self, weak sender] result in
+                // Return the web extraction result to AppKit's main queue before changing UI.
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    sender?.isEnabled = true
+                    do {
+                        let data = try result.get()
+                        let source = try CommunitySourceSong.decodeResponse(data)
+                        let score = try source.makeScore()
+                        try self.communityScoreStore.cache(entry: entry, score: score)
+                        self.statusLabel.stringValue = "Downloaded \(entry.title). It is cached locally and ready to play."
+                        self.rebuildCommunityRows()
+                    } catch {
+                        self.statusLabel.stringValue = "Could not download \(entry.title): \(error.localizedDescription)"
+                    }
+                }
+            }
             return
         }
         // Construct an encoded query without interpolating the remote filename into a path.
