@@ -142,6 +142,21 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("LyrePreviewPlayerTests passed", result.stdout)
 
+    def test_editable_midi_exporter_contract(self):
+        """Downloaded mapped community scores must export as a parseable editable MIDI file."""
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "midi-exporter-tests"
+            subprocess.run([
+                "swiftc", str(root / "player" / "MidiEngine.swift"),
+                str(root / "player" / "EditableMidiExporter.swift"),
+                str(root / "tests" / "EditableMidiExporterTests.swift"),
+                "-o", str(executable),
+            ], check=True)
+            result = subprocess.run([str(executable)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("EditableMidiExporterTests passed", result.stdout)
+
     def test_community_catalog_contains_metadata_without_note_payloads(self):
         """The repository may identify community work but must not redistribute its notes."""
         root = Path(__file__).parents[1]
@@ -235,6 +250,9 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn('"Mapping settings"', source)
         self.assertIn("advancedMappingStack.isHidden = false", source)
         self.assertIn("communityMoreAction", source)
+        self.assertIn("Export MIDI…", source)
+        self.assertIn("exportCommunityMidi", source)
+        self.assertIn("EditableMidiExporter", source)
         self.assertIn("systemRed", source)
         self.assertIn('"Preview — 5 second focus time"', source)
         self.assertIn('"Save to My Library"', source)
