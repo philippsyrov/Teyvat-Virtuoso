@@ -19,4 +19,4 @@ This is a source-file check, not a promise that every song will sound right on a
 - Reject, or manually isolate, tracks with too many chromatic notes instead of silently mangling them.
 - Keep playback offline and focused: the destination game window must be in front before a performance begins.
 
-The local tool is `work/preflight_midi.py`. It prints the duration, source tracks, playable-note percentage, best shared shift, and actual chord density before a MIDI is added to the desktop picker.
+The repository tool is `scripts/preflight_midi.py`. It prints the duration, source tracks, playable-note percentage, best shared shift, and actual chord density before a MIDI is imported into the app.

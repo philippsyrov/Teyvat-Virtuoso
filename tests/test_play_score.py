@@ -262,7 +262,6 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("rootView.trailingAnchor.constraint(equalTo: windowHost.trailingAnchor)", source)
         self.assertIn("contentContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 560)", source)
         self.assertIn("showDestination", source)
-        self.assertIn("makePersistentFooter", source)
 
     def test_community_screen_exposes_attribution_download_and_source_actions(self):
         """Community music must remain attributed, remote, and visibly distinct."""

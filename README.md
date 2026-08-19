@@ -97,9 +97,13 @@ docs/                          Mapping, privacy, design, and implementation note
 
 ## Private scores and copyright
 
-Downloaded or purchased MIDI files belong under the ignored `scores/private/` folder. Teyvat Virtuoso's local library stores generated score JSON under `~/Library/Application Support/Teyvat Virtuoso/`; it does not place private source files inside the repository or app bundle.
+Downloaded or purchased MIDI files belong under the ignored `scores/private/` folder. Teyvat Virtuoso stores generated score JSON in its standard macOS Application Support directory; it does not place private source files inside the repository or app bundle.
 
 Only publish MIDI sources or derivative arrangements when you have the right to redistribute them.
+
+## Documentation
+
+See the [documentation index](docs/README.md) for the current instrument, MIDI preflight, and private-score guides. Dated plans and specifications are kept separately as design history.
 
 ## Development
 

@@ -32,7 +32,7 @@ The window adds `Clear Imported Library…`. It opens a native confirmation aler
 
 On confirmation, the store removes its generated score JSON files and replaces `custom-library.json` with an empty library atomically. The live selector immediately returns to Aloha only. Cancellation performs no writes.
 
-During installation of this feature, the current `~/Library/Application Support/Teyvat Virtuoso` directory is moved to a timestamped sibling named `Teyvat Virtuoso Backup YYYYMMDD-HHMMSS` before the fresh app is launched. This one-time installation cleanup is separate from the in-app clear action.
+During installation of this feature, the app's existing Application Support directory is moved to a timestamped sibling backup before the fresh app is launched. This one-time installation cleanup is separate from the in-app clear action.
 
 ## Permissions and compatibility
 
