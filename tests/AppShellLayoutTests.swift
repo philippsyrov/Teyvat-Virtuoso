@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 final class SidebarTestDelegate: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-    func numberOfRows(in tableView: NSTableView) -> Int { 1 }
+    func numberOfRows(in tableView: NSTableView) -> Int { 2 }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         RoundedSidebarRowView()
@@ -45,24 +45,36 @@ struct AppShellLayoutTests {
 
         let sidebarDelegate = SidebarTestDelegate()
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 205, height: 200))
-        let table = NSTableView(frame: scroll.contentView.bounds)
+        let table = RoundedSidebarTableView(frame: scroll.contentView.bounds)
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Navigation"))
         column.width = 190
         table.addTableColumn(column)
         table.headerView = nil
         table.style = .sourceList
+        shellExpect(table.style == .plain, "the sidebar must reject source-list painting because it draws a clipped highlight outside the custom row")
+        table.selectionHighlightStyle = .regular
+        shellExpect(table.selectionHighlightStyle == .none, "the sidebar table must reject AppKit source-list highlighting so only the inset row pill is drawn")
         table.dataSource = sidebarDelegate
         table.delegate = sidebarDelegate
         scroll.documentView = table
         table.reloadData()
+        table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
         scroll.layoutSubtreeIfNeeded()
         table.layoutSubtreeIfNeeded()
-        guard let visibleRow = table.rowView(atRow: 0, makeIfNecessary: true) as? RoundedSidebarRowView else {
+        guard let visibleRow = table.rowView(atRow: 1, makeIfNecessary: true) as? RoundedSidebarRowView else {
             FileHandle.standardError.write(Data("FAIL: expected a rounded sidebar row\n".utf8))
             exit(1)
         }
+        shellExpect(visibleRow.selectionHighlightStyle == .none, "AppKit must not restore its clipped source-list highlight when a different sidebar row is selected")
         shellExpect(visibleRow.bounds.width > scroll.contentView.bounds.width, "the source-list row should reproduce AppKit's wider document width")
         shellExpect(visibleRow.selectionRectForDrawing().maxX == 195, "the selected pill must use the 205-point visible sidebar width and retain a 10-point right margin")
+        let clippedSelection = RoundedSidebarRowView.selectionRect(
+            rowBounds: NSRect(x: 0, y: 0, width: 222, height: 32),
+            clipWidth: 205
+        )
+        shellExpect(clippedSelection.maxX == 195, "selection drawing must derive its right edge from the stable scroll clip instead of the wider table row")
+
+        shellExpect(LibraryCardLayout.expandedSpeedEditorBottomSpacing >= 12, "the expanded speed slider must have a real spacer beneath it that stack compression cannot remove")
         print("AppShellLayoutTests passed")
     }
 }
