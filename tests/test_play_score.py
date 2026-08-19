@@ -253,7 +253,8 @@ class ValidateScoreTests(unittest.TestCase):
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
         self.assertIn("AppShellView(", source)
-        self.assertIn(".sourceList", source)
+        self.assertIn("RoundedSidebarTableView()", source)
+        self.assertNotIn("sidebarTable.style = .sourceList", source)
         self.assertIn('"Community Collection"', source)
         self.assertIn('"My Library"', source)
         self.assertIn('"Import MIDI"', source)
@@ -404,6 +405,7 @@ class ValidateScoreTests(unittest.TestCase):
         with (app / "Contents" / "Info.plist").open("rb") as plist_file:
             metadata = plistlib.load(plist_file)
         self.assertEqual(metadata.get("CFBundleIconFile"), "AppIcon")
+        self.assertEqual(metadata.get("CFBundleShortVersionString"), "0.2.1")
         self.assertTrue((app / "Contents" / "Resources" / "AppIcon.icns").is_file())
 
     def test_project_keeps_the_supplied_lyre_icon_artwork(self):
