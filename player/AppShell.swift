@@ -1,5 +1,10 @@
 import AppKit
 
+enum LibraryCardLayout {
+    static let expandedSpeedEditorInsets = NSEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
+    static let expandedSpeedEditorBottomSpacing: CGFloat = 12
+}
+
 // Keep window chrome confined to the sidebar while the music pane uses the full height.
 final class AppShellView: NSView {
     init(
@@ -31,21 +36,38 @@ final class AppShellView: NSView {
     required init?(coder: NSCoder) { nil }
 }
 
-// Draw a soft selection pill without letting its right edge hit the content transition.
-final class RoundedSidebarRowView: NSTableRowView {
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        selectionHighlightStyle = .none
+final class RoundedSidebarTableView: NSTableView {
+    override var style: NSTableView.Style {
+        get { .plain }
+        set { }
     }
 
-    required init?(coder: NSCoder) { nil }
+    override var selectionHighlightStyle: NSTableView.SelectionHighlightStyle {
+        get { .none }
+        set { }
+    }
+}
+
+// Draw a soft selection pill without letting its right edge hit the content transition.
+final class RoundedSidebarRowView: NSTableRowView {
+    override var selectionHighlightStyle: NSTableView.SelectionHighlightStyle {
+        get { .none }
+        set { }
+    }
 
     static func selectionRect(in bounds: NSRect) -> NSRect {
         bounds.insetBy(dx: 10, dy: 2)
     }
 
+    static func selectionRect(rowBounds: NSRect, clipWidth: CGFloat) -> NSRect {
+        var clippedBounds = rowBounds
+        clippedBounds.size.width = min(rowBounds.width, clipWidth)
+        return selectionRect(in: clippedBounds)
+    }
+
     func selectionRectForDrawing() -> NSRect {
-        Self.selectionRect(in: visibleRect)
+        let clipWidth = enclosingScrollView?.contentView.bounds.width ?? visibleRect.width
+        return Self.selectionRect(rowBounds: bounds, clipWidth: clipWidth)
     }
 
     override func drawBackground(in dirtyRect: NSRect) {
