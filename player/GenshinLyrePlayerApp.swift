@@ -378,7 +378,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private let importSummaryLabel = NSTextField(wrappingLabelWithString: "No MIDI loaded yet.")
     private let statusLabel = NSTextField(wrappingLabelWithString: "Ready.")
     // Retain the native sidebar and one replaceable content host.
-    private let sidebarTable = NSTableView()
+    private let sidebarTable = RoundedSidebarTableView()
     private let contentContainer = NSView()
     // Retain the community search and row stack for local filtering and cache refreshes.
     private let communitySearchField = NSSearchField()
@@ -520,7 +520,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         column.width = 190
         sidebarTable.addTableColumn(column)
         sidebarTable.headerView = nil
-        sidebarTable.style = .sourceList
+        sidebarTable.style = .plain
         sidebarTable.backgroundColor = .clear
         sidebarTable.rowSizeStyle = .medium
         sidebarTable.dataSource = self
@@ -1130,9 +1130,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
                 editor.orientation = .horizontal
                 editor.alignment = .centerY
                 editor.spacing = 10
-                editor.edgeInsets = NSEdgeInsets(top: 0, left: 14, bottom: 12, right: 14)
+                editor.edgeInsets = LibraryCardLayout.expandedSpeedEditorInsets
                 cardContent.addArrangedSubview(editor)
                 editor.widthAnchor.constraint(equalTo: cardContent.widthAnchor).isActive = true
+                let bottomSpacer = NSView()
+                bottomSpacer.heightAnchor.constraint(equalToConstant: LibraryCardLayout.expandedSpeedEditorBottomSpacing).isActive = true
+                cardContent.addArrangedSubview(bottomSpacer)
             }
             cardContent.translatesAutoresizingMaskIntoConstraints = false
             card.addSubview(cardContent)
