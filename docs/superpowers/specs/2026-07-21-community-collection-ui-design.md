@@ -33,7 +33,7 @@ Each row displays:
 
 Selecting a song shows its complete credit and a clickable source link. The app labels the section as community work and never describes it as official, bundled, owned, or endorsed content.
 
-Downloaded arrangement data is validated before storage. It must contain supported source keys, non-negative timestamps, and at least one event. The validated result is converted into the app's normal 21-key score schema and cached under `~/Library/Application Support/Teyvat Virtuoso/Community Scores/`. A small local manifest stores title, credit, source URL, cache filename, and attribution metadata. Network, decoding, validation, and file errors appear in the visible status area without deleting an existing cache.
+Downloaded arrangement data is validated before storage. It must contain supported source keys, non-negative timestamps, and at least one event. The validated result is converted into the app's normal 21-key score schema and cached beneath the app's standard macOS Application Support directory. A small local manifest stores title, credit, source URL, cache filename, and attribution metadata. Network, decoding, validation, and file errors appear without deleting an existing cache.
 
 ## My Library
 

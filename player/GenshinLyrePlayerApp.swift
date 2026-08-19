@@ -452,6 +452,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         window.styleMask.insert(.fullSizeContentView)
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
+        window.backgroundColor = .windowBackgroundColor
         // Enforce a minimum size that keeps controls readable.
         window.minSize = NSSize(width: 780, height: 600)
         // Centre the first launch.
@@ -492,17 +493,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
 
     // Build a sidebar shell whose status chrome never shortens the music pane.
     private func makeContentView() -> NSView {
-        // Build the source list, content host, and sidebar-only status surface.
+        // Build the source list and full-height content host over one window background.
         let sidebar = makeSidebar()
         contentContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 560).isActive = true
-        let footer = makePersistentFooter()
         let root = AppShellView(
             navigationView: sidebar,
             contentView: contentContainer,
-            statusView: footer,
             sidebarWidth: 205,
-            titlebarClearance: 52,
-            statusHeight: 52
+            titlebarClearance: 52
         )
         // Select Community Collection on first launch.
         sidebarTable.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
@@ -516,49 +514,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = false
         scroll.borderType = .noBorder
-        scroll.drawsBackground = true
-        scroll.backgroundColor = .windowBackgroundColor
+        scroll.drawsBackground = false
         // Use one simple column because icons and labels belong to each row view.
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Navigation"))
         column.width = 190
         sidebarTable.addTableColumn(column)
         sidebarTable.headerView = nil
         sidebarTable.style = .sourceList
-        sidebarTable.backgroundColor = .windowBackgroundColor
+        sidebarTable.backgroundColor = .clear
         sidebarTable.rowSizeStyle = .medium
         sidebarTable.dataSource = self
         sidebarTable.delegate = self
         scroll.documentView = sidebarTable
         return scroll
-    }
-
-    // Keep concise playback status only beneath the sidebar.
-    private func makePersistentFooter() -> NSView {
-        // Match the common window background instead of drawing another horizontal tab.
-        let footer = NSView()
-        footer.wantsLayer = true
-        footer.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        // Keep concise status without duplicating each card's Stop action.
-        let row = NSStackView()
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 14
-        row.edgeInsets = NSEdgeInsets(top: 9, left: 16, bottom: 9, right: 16)
-        row.translatesAutoresizingMaskIntoConstraints = false
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.maximumNumberOfLines = 2
-        statusLabel.lineBreakMode = .byTruncatingTail
-        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        row.addArrangedSubview(statusLabel)
-        // Keep Stop on the active score card instead of repeating it in this footer.
-        footer.addSubview(row)
-        NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: footer.leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: footer.trailingAnchor),
-            row.topAnchor.constraint(equalTo: footer.topAnchor),
-            row.bottomAnchor.constraint(equalTo: footer.bottomAnchor),
-        ])
-        return footer
     }
 
     // Return the three stable sidebar row count.
@@ -632,8 +600,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let scroll = ResponsivePageScrollView()
         scroll.hasVerticalScroller = true
         scroll.borderType = .noBorder
-        scroll.drawsBackground = true
-        scroll.backgroundColor = .windowBackgroundColor
+        scroll.drawsBackground = false
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -1087,21 +1054,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             textStack.alignment = .leading
             textStack.spacing = 4
             textStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            // Let imported performances reveal their own saved timing without crowding every card.
+            // Let imported performances reveal their own saved timing from the action rail.
             let speedControl = SavedSpeedControl(playbackSpeed: song.playbackSpeed ?? 1.00)
             let speedIsExpanded = expandedSpeedSongID == song.id
-            if song.userProvided == true {
-                let disclosure = NSButton(
-                    title: "Speed \(speedControl.percentageLabel) \(speedIsExpanded ? "▴" : "▾")",
-                    target: self,
-                    action: #selector(toggleLibrarySpeedEditor(_:))
-                )
-                disclosure.tag = index
-                disclosure.bezelStyle = .inline
-                disclosure.font = NSFont.systemFont(ofSize: 11, weight: .medium)
-                disclosure.contentTintColor = NSColor.secondaryLabelColor
-                textStack.addArrangedSubview(disclosure)
-            }
             // Change only the currently playing score's primary action into Stop.
             let isActive = activePlaybackID == libraryFavoriteID(for: song)
             let actionTitle = isActive ? "Stop" : "Play"
@@ -1120,21 +1075,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             let listen = NSButton(title: isPreviewing ? "Stop" : "Listen", target: self, action: #selector(libraryListenAction(_:)))
             listen.tag = index
             listen.widthAnchor.constraint(equalToConstant: 70).isActive = true
-            // Offer individual deletion only for locally generated scores; bundled Aloha remains protected.
-            let actions = NSStackView()
-            actions.orientation = .horizontal
-            actions.spacing = 8
+            // Build one compact ordered action rail; bundled Aloha has no local-file controls.
+            var actionViews: [NSView] = []
             if song.userProvided == true {
+                let disclosure = NSButton(
+                    title: "Speed \(speedControl.percentageLabel) \(speedIsExpanded ? "▴" : "▾")",
+                    target: self,
+                    action: #selector(toggleLibrarySpeedEditor(_:))
+                )
+                disclosure.tag = index
+                disclosure.bezelStyle = .inline
+                disclosure.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+                disclosure.contentTintColor = NSColor.secondaryLabelColor
+                disclosure.widthAnchor.constraint(equalToConstant: 86).isActive = true
+                actionViews.append(disclosure)
                 let delete = NSButton(title: "Delete", target: self, action: #selector(removeLibrarySong(_:)))
                 delete.tag = index
                 delete.widthAnchor.constraint(equalToConstant: 62).isActive = true
-                actions.addArrangedSubview(delete)
+                actionViews.append(delete)
             }
-            actions.addArrangedSubview(heart)
-            actions.addArrangedSubview(listen)
-            actions.addArrangedSubview(action)
+            actionViews.append(contentsOf: [heart, listen, action])
+            let actions = NSStackView(views: actionViews)
             actions.orientation = .horizontal
+            actions.alignment = .centerY
             actions.spacing = 8
+            actions.setContentHuggingPriority(.required, for: .horizontal)
             actions.setContentCompressionResistancePriority(.required, for: .horizontal)
             // Absorb spare width so the heart and play control stay pinned to the trailing edge.
             let actionSpacer = NSView()

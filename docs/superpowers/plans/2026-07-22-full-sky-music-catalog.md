@@ -56,7 +56,7 @@ Merge richer existing curated records by remote filename so researched title, ar
 
 - [ ] **Step 4: Regenerate `scores/community/catalog.json` from the fetched public index and run the test.**
 
-Run: `python3 scripts/build_community_catalog.py /private/tmp/sky-librarySongsList.json scores/community/catalog.json && python3 -m unittest tests/test_play_score.py`
+Run: `python3 scripts/build_community_catalog.py "$TMPDIR/sky-librarySongsList.json" scores/community/catalog.json && python3 -m unittest tests/test_play_score.py`
 
 Expected: metadata contracts pass and the file contains no `songNotes` field.
 
@@ -162,7 +162,7 @@ expectPreview(events[1].timeMs == 300, "expected cumulative schedule")
 
 - [ ] **Step 2: Run the new Swift test and confirm it fails before implementation.**
 
-Run: `swiftc player/MidiEngine.swift player/LyrePreviewPlayer.swift tests/LyrePreviewPlayerTests.swift -o /tmp/lyre-preview-tests`
+Run: `swiftc player/MidiEngine.swift player/LyrePreviewPlayer.swift tests/LyrePreviewPlayerTests.swift -o "$TMPDIR/lyre-preview-tests"`
 
 Expected: compilation fails because `LyrePreviewPlayer.swift` does not exist.
 
@@ -185,7 +185,7 @@ Keep the footer and status label for clear playback feedback.
 
 - [ ] **Step 6: Compile both app and audio tests.**
 
-Run: `swiftc player/MidiEngine.swift player/LyrePreviewPlayer.swift tests/LyrePreviewPlayerTests.swift -o /tmp/lyre-preview-tests && /tmp/lyre-preview-tests && ./scripts/build_app.sh`
+Run: `swiftc player/MidiEngine.swift player/LyrePreviewPlayer.swift tests/LyrePreviewPlayerTests.swift -o "$TMPDIR/lyre-preview-tests" && "$TMPDIR/lyre-preview-tests" && ./scripts/build_app.sh`
 
 Expected: `LyrePreviewPlayerTests passed` and `Built .../Teyvat Virtuoso.app`.
 
