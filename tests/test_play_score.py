@@ -100,6 +100,47 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("MidiEngineTests passed", result.stdout)
 
+    def test_import_defaults_preview_state_and_absolute_timing(self):
+        """Fresh imports stay raw, Preview exposes Stop, and key holds cannot accumulate timing drift."""
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "playback-behavior-tests"
+            subprocess.run(
+                [
+                    "swiftc",
+                    str(root / "player" / "MidiEngine.swift"),
+                    str(root / "player" / "PlaybackBehavior.swift"),
+                    str(root / "tests" / "PlaybackBehaviorTests.swift"),
+                    "-o",
+                    str(executable),
+                ],
+                check=True,
+            )
+            result = subprocess.run([str(executable)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PlaybackBehaviorTests passed", result.stdout)
+
+    def test_app_shell_keeps_chrome_inside_the_sidebar(self):
+        """Window chrome must not shorten the scrollable music pane or clip sidebar selections."""
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "app-shell-layout-tests"
+            subprocess.run(
+                [
+                    "swiftc",
+                    str(root / "player" / "AppShell.swift"),
+                    str(root / "tests" / "AppShellLayoutTests.swift"),
+                    "-o",
+                    str(executable),
+                    "-framework",
+                    "AppKit",
+                ],
+                check=True,
+            )
+            result = subprocess.run([str(executable)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("AppShellLayoutTests passed", result.stdout)
+
     def test_community_library_contract(self):
         """Community responses must convert safely while retaining attribution and cache boundaries."""
         root = Path(__file__).parents[1]
@@ -190,7 +231,7 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("play(score:", source)
 
     def test_native_app_exposes_smart_mapping_and_personal_library_controls(self):
-        """The visible app must default to Smart and expose favourites plus safe clearing."""
+        """The visible app must retain optional Smart mapping and expose favourites plus safe clearing."""
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
         self.assertIn("Smart — key-aware", source)
@@ -211,7 +252,7 @@ class ValidateScoreTests(unittest.TestCase):
         """A native sidebar must replace the crowded single-page workbench."""
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
-        self.assertIn("NSSplitView", source)
+        self.assertIn("AppShellView(", source)
         self.assertIn(".sourceList", source)
         self.assertIn('"Community Collection"', source)
         self.assertIn('"My Library"', source)
@@ -219,8 +260,6 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("contentContainer", source)
         self.assertIn("rootView.leadingAnchor.constraint(equalTo: windowHost.leadingAnchor)", source)
         self.assertIn("rootView.trailingAnchor.constraint(equalTo: windowHost.trailingAnchor)", source)
-        self.assertIn("splitView.leadingAnchor.constraint(equalTo: root.leadingAnchor)", source)
-        self.assertIn("splitView.trailingAnchor.constraint(equalTo: root.trailingAnchor)", source)
         self.assertIn("contentContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 560)", source)
         self.assertIn("showDestination", source)
         self.assertIn("makePersistentFooter", source)
@@ -318,13 +357,10 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("grid.setContentHuggingPriority(.required, for: .vertical)", source)
         self.assertNotIn("height: 900", source)
 
-    def test_sidebar_pages_remove_the_divider_and_track_the_available_width(self):
-        """The sidebar must not draw a dark rule or clip a page to a fixed document width."""
+    def test_sidebar_pages_track_the_available_width(self):
+        """The unified shell must not clip a page to a fixed document width."""
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
-        self.assertIn("final class BorderlessSplitView: NSSplitView", source)
-        self.assertIn("override var dividerThickness: CGFloat { 0 }", source)
-        self.assertNotIn("splitView.dividerStyle = .thin", source)
         self.assertIn("final class ResponsivePageScrollView", source)
         self.assertIn("documentView.frame.size.width = contentView.bounds.width", source)
         self.assertNotIn("stack.frame = NSRect(x: 0, y: 0, width: 680, height: 0)", source)
