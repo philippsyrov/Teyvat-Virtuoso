@@ -179,6 +179,18 @@ final class UserScoreStore {
         return ordered
     }
 
+    // Remove one generated arrangement while preserving every other local score.
+    func remove(id: String) throws {
+        // Read the latest valid local manifest before resolving the requested entry.
+        let current = loadSongs()
+        // Require one exact local identity instead of accepting a stale card action.
+        guard let song = current.first(where: { $0.id == id }) else { throw UserScoreStoreError.songNotFound }
+        // Remove only that generated JSON score from the dedicated Application Support folder.
+        try FileManager.default.removeItem(at: scoreURL(for: song.file))
+        // Persist the remaining local entries after the removed file can no longer be played.
+        try writeManifest(current.filter { $0.id != id })
+    }
+
     // Remove every generated arrangement while staying inside this store's root.
     func clear() throws {
         // Remove only the dedicated generated-score directory when it exists.

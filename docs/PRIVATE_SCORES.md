@@ -18,8 +18,8 @@ For a good result, keep the lead melody recognisable first. Then choose bass and
 
 Never add a private MIDI or a generated arrangement to Git unless you have clear redistribution rights.
 
-When you choose **Save to Library**, Teyvat Virtuoso stores only generated key-event JSON under your macOS Application Support folder. The original MIDI is never copied, modified, or added to the repository.
+When you choose **Save to My Library**, Teyvat Virtuoso stores only generated key-event JSON under your macOS Application Support folder. The original MIDI is never copied, modified, or added to the repository.
 
-Smart mapping is applied while the imported MIDI is converted. The saved JSON already contains resolved Genshin keys, so later mapping-option changes do not rewrite it. Favourite state is stored only in the local `custom-library.json` manifest.
+Every newly opened MIDI starts at +0 transposition, Strict missing-note handling, Merge Off, and original 100% timing. Smart remains an optional mapping policy. The saved JSON already contains resolved Genshin keys, so later mapping-option changes do not rewrite it. Favourite state and each imported song's adjustable playback speed are stored only in the local `custom-library.json` manifest.
 
 **Clear Imported Library…** removes generated score JSON and resets that local manifest after confirmation. It does not remove the protected bundled Aloha arrangement or any original `.mid`/`.midi` source file.

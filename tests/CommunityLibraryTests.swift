@@ -81,6 +81,10 @@ struct CommunityLibraryTests {
         try store.cache(entry: entry, score: score)
         expectCommunity(store.cachedScore(for: entry) == score, "expected cached converted score")
         expectCommunity(store.loadRecords().first?.entry == entry, "expected cached attribution metadata")
+        // Remove only the locally cached conversion while retaining no stale manifest record.
+        try store.remove(entry: entry)
+        expectCommunity(store.cachedScore(for: entry) == nil, "expected removed cached score")
+        expectCommunity(store.loadRecords().isEmpty, "expected removed cache manifest record")
         // Refuse catalog identities that could escape the dedicated cache directory.
         let unsafe = CommunityCatalogEntry(id: "../escape", title: "Unsafe", arranger: nil, durationSeconds: 1, remoteFile: "Unsafe.txt", sourceURL: "https://example.com")
         do {
