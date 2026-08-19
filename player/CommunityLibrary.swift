@@ -10,11 +10,15 @@ struct CommunityCatalogEntry: Codable, Equatable {
     // Credit the community arranger when the upstream source identifies one.
     let arranger: String?
     // Show a concise researched duration before downloading note data.
-    let durationSeconds: Int
+    let durationSeconds: Int?
     // Identify the upstream Sky Music arrangement without bundling its notes.
     let remoteFile: String
     // Link users back to the community source collection.
     let sourceURL: String
+    // Keep the original visual sheet page for on-demand JSON export when available.
+    var visualSheetURL: String? = nil
+    // Preserve the source website category without inventing a genre.
+    var category: String? = nil
 
     // Present honest attribution even when upstream authorship is missing.
     var creditLine: String {
@@ -184,6 +188,23 @@ final class CommunityScoreStore {
               !score.isEmpty else { return nil }
         // Return only score data produced by the validated converter.
         return score
+    }
+
+    // Remove one locally cached conversion without touching remote source data or metadata catalogue rows.
+    func remove(entry: CommunityCatalogEntry) throws {
+        // Resolve only a manifest-owned record for this stable catalogue identity.
+        guard let record = loadRecords().first(where: { $0.entry.id == entry.id }) else { return }
+        // Build the expected local cache path from the manifest-owned safe filename.
+        let scoreURL = scoresDirectory.appendingPathComponent(record.filename)
+        // Delete only that converted local score when it still exists.
+        if FileManager.default.fileExists(atPath: scoreURL.path) { try FileManager.default.removeItem(at: scoreURL) }
+        // Remove only this record while preserving every other cached arrangement.
+        let remaining = loadRecords().filter { $0.entry.id != entry.id }
+        // Keep the manifest valid even after removing its final cached record.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try encoder.encode(CommunityCacheManifest(records: remaining)).write(to: manifestURL, options: .atomic)
     }
 
     // Persist one validated conversion and its complete attribution atomically.

@@ -38,14 +38,14 @@ Represent each event as a time plus one or more keys. One key is a melody note; 
 ]
 ```
 
-## Best Mac setup
+## Using Teyvat Virtuoso on Mac
 
 1. Use Genshin through GeForce NOW, not iPhone Mirroring.
-2. Keep the game focused while a score plays.
-3. Store tunes as separate JSON files in a `songs/` folder.
-4. Use a small local Mac score player that sends key-down events together, waits until the next timestamp, then releases them together.
+2. Import a MIDI or compatible Sky Music sheet into Teyvat Virtuoso.
+3. Preview the reduction, then keep the game focused while the saved performance plays.
+4. Use **Stop** on the active card whenever you need to interrupt playback.
 
-That fourth step is how we get real multi-key chords and repeatable recorded tunes. A native Swift score player is the cleanest option: no extra macro app, a song library, dry-run mode, and one command per tune. It needs macOS Accessibility permission before it can send keyboard events.
+Teyvat Virtuoso sends simultaneous key-down events for real multi-key chords and follows the source event timeline. macOS Accessibility permission is required before it can send keyboard events to the focused game window.
 
 ## Important boundary
 

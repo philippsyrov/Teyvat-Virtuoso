@@ -60,8 +60,8 @@ Add a C-minor fixture using repeated MIDI pitches `[60, 63, 67, 60, 62, 63, 67, 
 Run:
 
 ```zsh
-swiftc player/MidiEngine.swift tests/MidiEngineTests.swift -o /private/tmp/teyvat-midi-tests
-/private/tmp/teyvat-midi-tests
+swiftc player/MidiEngine.swift tests/MidiEngineTests.swift -o "$TMPDIR/teyvat-midi-tests"
+"$TMPDIR/teyvat-midi-tests"
 ```
 
 Expected: compilation fails because `MissingNotePolicy.smart`, `MusicalKey`, and `detectedKey` do not exist.
@@ -153,7 +153,7 @@ expect(FileManager.default.fileExists(atPath: sibling.path), "expected clear to 
 - [ ] **Step 2: Run the store test and verify RED**
 
 ```zsh
-swiftc player/MidiEngine.swift player/UserScoreStore.swift tests/UserScoreStoreTests.swift -o /private/tmp/teyvat-store-tests
+swiftc player/MidiEngine.swift player/UserScoreStore.swift tests/UserScoreStoreTests.swift -o "$TMPDIR/teyvat-store-tests"
 ```
 
 Expected: failure because `player/UserScoreStore.swift` does not exist.
@@ -178,8 +178,8 @@ Update `scripts/build_app.sh` to compile `MidiEngine.swift`, `UserScoreStore.swi
 - [ ] **Step 5: Run persistence tests and verify GREEN**
 
 ```zsh
-swiftc player/MidiEngine.swift player/UserScoreStore.swift tests/UserScoreStoreTests.swift -o /private/tmp/teyvat-store-tests
-/private/tmp/teyvat-store-tests
+swiftc player/MidiEngine.swift player/UserScoreStore.swift tests/UserScoreStoreTests.swift -o "$TMPDIR/teyvat-store-tests"
+"$TMPDIR/teyvat-store-tests"
 python3 -m unittest tests/test_play_score.py
 ```
 
@@ -266,8 +266,8 @@ git commit -m "feat: add personal library controls"
 - Modify: `README.md`
 - Modify: `docs/PRIVATE_SCORES.md`
 - Generated: `build/Teyvat Virtuoso.app`
-- Replace: `/Users/philippsyrov/Desktop/Teyvat Virtuoso.app`
-- Move once: `/Users/philippsyrov/Library/Application Support/Teyvat Virtuoso` to `/Users/philippsyrov/Library/Application Support/Teyvat Virtuoso Backup YYYYMMDD-HHMMSS`
+- Replace: the previously installed app bundle
+- Move once: the app's Application Support directory to a timestamped sibling backup
 
 **Interfaces:**
 - Consumes: completed engine, store, AppKit controls, and current local generated library.
@@ -297,11 +297,11 @@ git commit -m "docs: explain smart mapping and library controls"
 
 - [ ] **Step 4: Back up and clear the active imported library**
 
-Quit the running Desktop app. Resolve one timestamped sibling path, verify the source is exactly `/Users/philippsyrov/Library/Application Support/Teyvat Virtuoso`, and move that directory to the sibling backup. Do not delete the backup or any original MIDI.
+Quit the running app. Resolve one timestamped sibling path, verify the source is exactly the app's Application Support directory, and move that directory to the sibling backup. Do not delete the backup or any original MIDI.
 
 - [ ] **Step 5: Install and visually verify the Desktop app**
 
-Move the previous Desktop bundle to a recoverable `/private/tmp` backup, copy the freshly built bundle into `/Users/philippsyrov/Desktop/Teyvat Virtuoso.app`, and launch it. Verify the picker initially contains Aloha only, Smart is selected, a dropped MIDI displays a detected key, saving adds one local song, favourite toggling adds `♥` and reorders it, cancelling Clear changes nothing, and confirming Clear returns the picker to Aloha.
+Move the previously installed bundle to a recoverable temporary backup, install the freshly built bundle, and launch it. Verify the picker initially contains Aloha only, Smart is selected, a dropped MIDI displays a detected key, saving adds one local song, favourite toggling adds `♥` and reorders it, cancelling Clear changes nothing, and confirming Clear returns the picker to Aloha.
 
 - [ ] **Step 6: Run one live GeForce NOW smoke test**
 

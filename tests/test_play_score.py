@@ -63,7 +63,7 @@ class ValidateScoreTests(unittest.TestCase):
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
         self.assertIn("NSPopUpButton", source)
-        self.assertIn("NSButton(title: \"Stop\"", source)
+        self.assertIn("actionTitle = isActive ? \"Stop\" : \"Play\"", source)
         self.assertIn("Bundle.main", source)
         self.assertIn("Timing: original 100%", source)
 
@@ -100,6 +100,47 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("MidiEngineTests passed", result.stdout)
 
+    def test_import_defaults_preview_state_and_absolute_timing(self):
+        """Fresh imports stay raw, Preview exposes Stop, and key holds cannot accumulate timing drift."""
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "playback-behavior-tests"
+            subprocess.run(
+                [
+                    "swiftc",
+                    str(root / "player" / "MidiEngine.swift"),
+                    str(root / "player" / "PlaybackBehavior.swift"),
+                    str(root / "tests" / "PlaybackBehaviorTests.swift"),
+                    "-o",
+                    str(executable),
+                ],
+                check=True,
+            )
+            result = subprocess.run([str(executable)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PlaybackBehaviorTests passed", result.stdout)
+
+    def test_app_shell_keeps_chrome_inside_the_sidebar(self):
+        """Window chrome must not shorten the scrollable music pane or clip sidebar selections."""
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "app-shell-layout-tests"
+            subprocess.run(
+                [
+                    "swiftc",
+                    str(root / "player" / "AppShell.swift"),
+                    str(root / "tests" / "AppShellLayoutTests.swift"),
+                    "-o",
+                    str(executable),
+                    "-framework",
+                    "AppKit",
+                ],
+                check=True,
+            )
+            result = subprocess.run([str(executable)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("AppShellLayoutTests passed", result.stdout)
+
     def test_community_library_contract(self):
         """Community responses must convert safely while retaining attribution and cache boundaries."""
         root = Path(__file__).parents[1]
@@ -120,26 +161,67 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("CommunityLibraryTests passed", result.stdout)
 
+    def test_visual_sheet_exporter_matches_legacy_table_layout(self):
+        """Legacy Sky Music pages must use the same table root as the source exporter."""
+        root = Path(__file__).parents[1]
+        source = (root / "player" / "VisualSheetDownloader.swift").read_text()
+        self.assertIn("const cell = table.children[0];", source)
+        self.assertNotIn("table.children[0]?.children[0]", source)
+
+    def test_lyre_preview_planner_contract(self):
+        """Listen preview must preserve score timing and map the three keyboard rows."""
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "lyre-preview-tests"
+            subprocess.run([
+                "swiftc", str(root / "player" / "MidiEngine.swift"),
+                str(root / "player" / "LyrePreviewPlayer.swift"),
+                str(root / "tests" / "LyrePreviewPlayerTests.swift"),
+                "-o", str(executable), "-framework", "AVFoundation",
+            ], check=True)
+            result = subprocess.run([str(executable)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("LyrePreviewPlayerTests passed", result.stdout)
+
+    def test_editable_midi_exporter_contract(self):
+        """Downloaded mapped community scores must export as a parseable editable MIDI file."""
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "midi-exporter-tests"
+            subprocess.run([
+                "swiftc", str(root / "player" / "MidiEngine.swift"),
+                str(root / "player" / "EditableMidiExporter.swift"),
+                str(root / "tests" / "EditableMidiExporterTests.swift"),
+                "-o", str(executable),
+            ], check=True)
+            result = subprocess.run([str(executable)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("EditableMidiExporterTests passed", result.stdout)
+
     def test_community_catalog_contains_metadata_without_note_payloads(self):
         """The repository may identify community work but must not redistribute its notes."""
         root = Path(__file__).parents[1]
         catalog_path = root / "scores" / "community" / "catalog.json"
         catalog_text = catalog_path.read_text()
         catalog = json.loads(catalog_text)
-        self.assertGreaterEqual(len(catalog["songs"]), 12)
+        self.assertGreaterEqual(len(catalog["songs"]), 200)
         self.assertNotIn("songNotes", catalog_text)
         for entry in catalog["songs"]:
             self.assertTrue(entry["id"])
             self.assertTrue(entry["title"])
             self.assertTrue(entry["remoteFile"])
             self.assertTrue(entry["sourceURL"].startswith("https://"))
+            self.assertTrue(entry["visualSheetURL"].startswith("https://sky-music.github.io/songs/"))
+            self.assertTrue(entry["category"])
 
     def test_native_app_exposes_the_complete_midi_import_workflow(self):
         """The visible app must wire drag/drop, track choice, mapping, and playback."""
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
         self.assertIn("registerForDraggedTypes([.fileURL])", source)
-        self.assertIn("Open MIDI…", source)
+        self.assertIn("Open Score…", source)
+        self.assertIn('"txt", "json"', source)
+        self.assertIn("loadSkyMusicSheet", source)
         self.assertIn("Enabled tracks", source)
         self.assertIn("Strict — skip black keys", source)
         self.assertIn("Snap black keys down", source)
@@ -149,22 +231,28 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("play(score:", source)
 
     def test_native_app_exposes_smart_mapping_and_personal_library_controls(self):
-        """The visible app must default to Smart and expose favourites plus safe clearing."""
+        """The visible app must retain optional Smart mapping and expose favourites plus safe clearing."""
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
         self.assertIn("Smart — key-aware", source)
         self.assertIn("toggleFavorite", source)
+        self.assertIn("Search My Library", source)
+        self.assertIn("filterLibrarySongs", source)
         self.assertNotIn("Set Saved Speed", source)
         self.assertIn("Clear Imported Library…", source)
         self.assertIn("NSAlert", source)
         self.assertIn("userScoreStore.clear()", source)
         self.assertIn("detectedKey", source)
+        self.assertIn("removeLibrarySong", source)
+        self.assertIn('"Delete"', source)
+        self.assertIn("listenImported", source)
+        self.assertIn('"Listen"', source)
 
     def test_native_app_separates_community_library_and_import_destinations(self):
         """A native sidebar must replace the crowded single-page workbench."""
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
-        self.assertIn("NSSplitView", source)
+        self.assertIn("AppShellView(", source)
         self.assertIn(".sourceList", source)
         self.assertIn('"Community Collection"', source)
         self.assertIn('"My Library"', source)
@@ -172,11 +260,8 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("contentContainer", source)
         self.assertIn("rootView.leadingAnchor.constraint(equalTo: windowHost.leadingAnchor)", source)
         self.assertIn("rootView.trailingAnchor.constraint(equalTo: windowHost.trailingAnchor)", source)
-        self.assertIn("splitView.leadingAnchor.constraint(equalTo: root.leadingAnchor)", source)
-        self.assertIn("splitView.trailingAnchor.constraint(equalTo: root.trailingAnchor)", source)
         self.assertIn("contentContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 560)", source)
         self.assertIn("showDestination", source)
-        self.assertIn("makePersistentFooter", source)
 
     def test_community_screen_exposes_attribution_download_and_source_actions(self):
         """Community music must remain attributed, remote, and visibly distinct."""
@@ -184,6 +269,13 @@ class ValidateScoreTests(unittest.TestCase):
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
         self.assertIn("CommunityScoreStore", source)
         self.assertIn("URLSession.shared.dataTask", source)
+        self.assertIn("communityVisibleLimit", source)
+        self.assertIn('"Load more"', source)
+        self.assertIn("communityListenAction", source)
+        self.assertIn("communityCategoryPicker", source)
+        self.assertIn("VisualSheetDownloader", source)
+        self.assertIn("libraryListenAction", source)
+        self.assertNotIn('NSButton(title: "Stop", target: self, action: #selector(stopPlayback))', source)
         self.assertIn("creditLine", source)
         self.assertIn('"Open Source"', source)
         self.assertIn("NSWorkspace.shared.open", source)
@@ -193,8 +285,13 @@ class ValidateScoreTests(unittest.TestCase):
         """Technical MIDI controls should not dominate the default import screen."""
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
-        self.assertIn('"Advanced mapping"', source)
-        self.assertIn("advancedMappingStack.isHidden = true", source)
+        self.assertIn('"Mapping settings"', source)
+        self.assertIn("advancedMappingStack.isHidden = false", source)
+        self.assertIn("communityMoreAction", source)
+        self.assertIn("Export MIDI…", source)
+        self.assertIn("exportCommunityMidi", source)
+        self.assertIn("EditableMidiExporter", source)
+        self.assertIn("systemRed", source)
         self.assertIn('"Preview — 5 second focus time"', source)
         self.assertIn('"Save to My Library"', source)
 
@@ -259,13 +356,10 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn("grid.setContentHuggingPriority(.required, for: .vertical)", source)
         self.assertNotIn("height: 900", source)
 
-    def test_sidebar_pages_remove_the_divider_and_track_the_available_width(self):
-        """The sidebar must not draw a dark rule or clip a page to a fixed document width."""
+    def test_sidebar_pages_track_the_available_width(self):
+        """The unified shell must not clip a page to a fixed document width."""
         root = Path(__file__).parents[1]
         source = (root / "player" / "GenshinLyrePlayerApp.swift").read_text()
-        self.assertIn("final class BorderlessSplitView: NSSplitView", source)
-        self.assertIn("override var dividerThickness: CGFloat { 0 }", source)
-        self.assertNotIn("splitView.dividerStyle = .thin", source)
         self.assertIn("final class ResponsivePageScrollView", source)
         self.assertIn("documentView.frame.size.width = contentView.bounds.width", source)
         self.assertNotIn("stack.frame = NSRect(x: 0, y: 0, width: 680, height: 0)", source)
@@ -290,7 +384,7 @@ class ValidateScoreTests(unittest.TestCase):
         self.assertIn('let actionTitle = isActive ? "Stop"', source)
         self.assertIn("player.onPlaybackChange", source)
         self.assertIn('NSButton(title: "♥"', source)
-        self.assertIn("advancedMappingDisclosure.setContentCompressionResistancePriority(.required, for: .horizontal)", source)
+        self.assertNotIn("advancedMappingDisclosure.setContentCompressionResistancePriority(.required, for: .horizontal)", source)
         self.assertIn("makeImportCard", source)
 
     def test_build_binds_the_stable_bundle_identity(self):

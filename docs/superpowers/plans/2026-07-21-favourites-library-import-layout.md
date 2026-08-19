@@ -39,7 +39,7 @@ assert(store.favoriteIDs() == ["community:illusionary-daytime", "library:aloha_o
 
 - [ ] **Step 2: Run the failing test**
 
-Run: `swiftc player/FavoriteStore.swift tests/FavoriteStoreTests.swift -o /tmp/favorite-store-tests && /tmp/favorite-store-tests`
+Run: `swiftc player/FavoriteStore.swift tests/FavoriteStoreTests.swift -o "$TMPDIR/favorite-store-tests" && "$TMPDIR/favorite-store-tests"`
 
 Expected: FAIL because `FavoriteStore.swift` does not exist.
 
@@ -56,7 +56,7 @@ Store a sorted JSON array at `Application Support/Teyvat Virtuoso/favorites.json
 
 - [ ] **Step 4: Verify the focused test passes**
 
-Run: `swiftc player/FavoriteStore.swift tests/FavoriteStoreTests.swift -o /tmp/favorite-store-tests && /tmp/favorite-store-tests`
+Run: `swiftc player/FavoriteStore.swift tests/FavoriteStoreTests.swift -o "$TMPDIR/favorite-store-tests" && "$TMPDIR/favorite-store-tests"`
 
 Expected: `FavoriteStoreTests passed`.
 
@@ -171,7 +171,7 @@ Expected: PASS.
 
 **Interfaces:**
 - Consumes: Tasks 1–4.
-- Produces: a verified Desktop application at `/Users/philippsyrov/Desktop/Teyvat Virtuoso.app` and a repository whose visible name contains a space.
+- Produces: a verified installed application and a repository whose visible name contains a space.
 
 - [ ] **Step 1: Run the full automated checks**
 

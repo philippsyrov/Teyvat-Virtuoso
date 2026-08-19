@@ -145,7 +145,7 @@ Open `build/Teyvat Virtuoso.app`, resize to its minimum width, and check all thr
 
 - [ ] **Step 3: Install with rollback**
 
-Move the existing `/Users/philippsyrov/Desktop/Teyvat Virtuoso.app` to a temporary sibling backup, copy the verified build with `ditto`, verify its signature and `community-catalog.json`, then remove the backup only after all checks pass. Restore the backup if any check fails.
+Move the existing installed app to a temporary sibling backup, copy the verified build with `ditto`, verify its signature and `community-catalog.json`, then remove the backup only after all checks pass. Restore the backup if any check fails.
 
 - [ ] **Step 4: Commit verification corrections only if needed**
 

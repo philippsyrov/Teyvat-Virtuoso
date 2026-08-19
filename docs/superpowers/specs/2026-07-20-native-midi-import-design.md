@@ -23,7 +23,7 @@ The window keeps the curated song picker at the top and adds an Import MIDI sect
 
 ## Persistence and safety
 
-Bundled public-domain scores remain read-only. Imported reductions are written to `~/Library/Application Support/Teyvat Virtuoso/Scores/` with a local manifest. Private MIDI sources and commercial arrangements are not committed or copied into the public repository. Malformed MIDI and unsupported SMPTE timing return visible errors and never emit key events.
+Bundled public-domain scores remain read-only. Imported reductions are written beneath the app's standard macOS Application Support directory with a local manifest. Private MIDI sources and commercial arrangements are not committed or copied into the public repository. Malformed MIDI and unsupported SMPTE timing return visible errors and never emit key events.
 
 ## Verification
 
