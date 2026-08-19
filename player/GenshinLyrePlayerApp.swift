@@ -40,12 +40,6 @@ final class ResponsivePageScrollView: NSScrollView {
     }
 }
 
-// Remove the split-view separator while preserving the normal sidebar-and-content layout.
-final class BorderlessSplitView: NSSplitView {
-    // Give AppKit no drawable divider width between the two navigation panes.
-    override var dividerThickness: CGFloat { 0 }
-}
-
 // Present one obvious target for Finder MIDI or Sky Music sheet files.
 final class MidiDropView: NSView {
     // Deliver a validated dropped MIDI URL to the app delegate.
@@ -183,15 +177,21 @@ final class PlaybackController {
                 self.clearActiveID(for: generation)
                 return
             }
-            // Play every saved event in chronological order.
-            for event in score {
-                // Keep every rest interruptible by Stop.
-                guard self.wait(seconds: Double(event.delayMs) / 1_000 / speed) else {
-                    self.clearActiveID(for: generation)
-                    return
-                }
-                // Deliver all event keys as one true chord.
-                self.playChord(event.keys)
+            // Anchor every event to the performance start so the 25 ms key hold cannot accumulate timing drift.
+            let playbackStart = DispatchTime.now().uptimeNanoseconds
+            let completed = PlaybackTimeline.perform(
+                score: score,
+                speed: speed,
+                waitUntil: { target in
+                    // Subtract all elapsed wall time, including prior key holds, from this source-authored onset.
+                    let elapsed = Double(DispatchTime.now().uptimeNanoseconds - playbackStart) / 1_000_000_000
+                    return self.wait(seconds: max(0, target - elapsed))
+                },
+                playChord: self.playChord
+            )
+            guard completed else {
+                self.clearActiveID(for: generation)
+                return
             }
             // Confirm a normal ending only after the final note.
             self.setStatus("Performance complete: \(title).")
@@ -423,6 +423,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private var activePreviewID: String?
     // Remember the one active card whose primary action should read Stop.
     private var activePlaybackID: String?
+    // Keep at most one saved-song speed editor expanded across card redraws.
+    private var expandedSpeedSongID: String?
 
     // Construct the app's single native window at launch.
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -446,7 +448,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         guard let window = self.window else { return }
         // Give the window the project identity.
         window.title = "Teyvat Virtuoso"
-        // Remove the bright native separator so the title bar flows into the dark app content.
+        // Let content supply one uninterrupted background beneath the native traffic lights and title.
+        window.styleMask.insert(.fullSizeContentView)
+        window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         // Enforce a minimum size that keeps controls readable.
         window.minSize = NSSize(width: 780, height: 600)
@@ -471,6 +475,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             self?.activePlaybackID = id
             self?.rebuildCommunityRows()
             self?.rebuildLibraryRows()
+            self?.updateImportedPreviewButton()
         }
         // Reflect local Listen activity independently from keyboard playback.
         previewPlayer.onStatus = { [weak self] text in self?.statusLabel.stringValue = text }
@@ -485,37 +490,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // Build a sidebar shell with one visible destination and a persistent footer.
+    // Build a sidebar shell whose status chrome never shortens the music pane.
     private func makeContentView() -> NSView {
-        // Use an explicitly constrained root so the split view can never collapse to intrinsic width.
-        let root = NSView()
-        // Split navigation from the active page without drawing a dark rule between them.
-        let splitView = BorderlessSplitView()
-        splitView.isVertical = true
-        splitView.translatesAutoresizingMaskIntoConstraints = false
-        // Build and retain the source-list sidebar.
+        // Build the source list, content host, and sidebar-only status surface.
         let sidebar = makeSidebar()
-        sidebar.translatesAutoresizingMaskIntoConstraints = false
-        sidebar.widthAnchor.constraint(equalToConstant: 205).isActive = true
-        // Let the content host fill all remaining split-view space.
-        contentContainer.translatesAutoresizingMaskIntoConstraints = false
         contentContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 560).isActive = true
-        splitView.addArrangedSubview(sidebar)
-        splitView.addArrangedSubview(contentContainer)
-        // Keep playback status and Stop visible across every destination.
         let footer = makePersistentFooter()
-        root.addSubview(splitView)
-        root.addSubview(footer)
-        // Pin the navigation and footer to every edge instead of relying on intrinsic stack width.
-        NSLayoutConstraint.activate([
-            splitView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            splitView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            splitView.topAnchor.constraint(equalTo: root.topAnchor),
-            splitView.bottomAnchor.constraint(equalTo: footer.topAnchor),
-            footer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            footer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            footer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-        ])
+        let root = AppShellView(
+            navigationView: sidebar,
+            contentView: contentContainer,
+            statusView: footer,
+            sidebarWidth: 205,
+            titlebarClearance: 52,
+            statusHeight: 52
+        )
         // Select Community Collection on first launch.
         sidebarTable.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         showDestination(.community)
@@ -536,6 +524,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         sidebarTable.addTableColumn(column)
         sidebarTable.headerView = nil
         sidebarTable.style = .sourceList
+        sidebarTable.backgroundColor = .windowBackgroundColor
         sidebarTable.rowSizeStyle = .medium
         sidebarTable.dataSource = self
         sidebarTable.delegate = self
@@ -543,15 +532,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         return scroll
     }
 
-    // Keep the playback state and emergency stop visible below every page.
+    // Keep concise playback status only beneath the sidebar.
     private func makePersistentFooter() -> NSView {
-        // Use a subtle material-backed footer instead of another full page section.
-        let footer = NSVisualEffectView()
-        footer.material = .headerView
-        footer.blendingMode = .withinWindow
-        footer.state = .active
-        footer.translatesAutoresizingMaskIntoConstraints = false
-        footer.heightAnchor.constraint(greaterThanOrEqualToConstant: 52).isActive = true
+        // Match the common window background instead of drawing another horizontal tab.
+        let footer = NSView()
+        footer.wantsLayer = true
+        footer.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         // Keep concise status without duplicating each card's Stop action.
         let row = NSStackView()
         row.orientation = .horizontal
@@ -607,6 +593,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         return cell
     }
 
+    // Draw every selected destination as a fully rounded inset pill.
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        RoundedSidebarRowView()
+    }
+
     // Switch the single content host when sidebar selection changes.
     func tableViewSelectionDidChange(_ notification: Notification) {
         // Ignore transient empty selection and resolve a stable destination.
@@ -641,6 +632,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         let scroll = ResponsivePageScrollView()
         scroll.hasVerticalScroller = true
         scroll.borderType = .noBorder
+        scroll.drawsBackground = true
+        scroll.backgroundColor = .windowBackgroundColor
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -1094,6 +1087,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             textStack.alignment = .leading
             textStack.spacing = 4
             textStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            // Let imported performances reveal their own saved timing without crowding every card.
+            let speedControl = SavedSpeedControl(playbackSpeed: song.playbackSpeed ?? 1.00)
+            let speedIsExpanded = expandedSpeedSongID == song.id
+            if song.userProvided == true {
+                let disclosure = NSButton(
+                    title: "Speed \(speedControl.percentageLabel) \(speedIsExpanded ? "▴" : "▾")",
+                    target: self,
+                    action: #selector(toggleLibrarySpeedEditor(_:))
+                )
+                disclosure.tag = index
+                disclosure.bezelStyle = .inline
+                disclosure.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+                disclosure.contentTintColor = NSColor.secondaryLabelColor
+                textStack.addArrangedSubview(disclosure)
+            }
             // Change only the currently playing score's primary action into Stop.
             let isActive = activePlaybackID == libraryFavoriteID(for: song)
             let actionTitle = isActive ? "Stop" : "Play"
@@ -1139,12 +1147,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             row.spacing = 16
             row.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
             row.translatesAutoresizingMaskIntoConstraints = false
-            card.addSubview(row)
+            let cardContent = NSStackView(views: [row])
+            cardContent.orientation = .vertical
+            cardContent.alignment = .leading
+            cardContent.spacing = 0
+            // Expand the chosen imported card with a bounded persisted speed dragger.
+            if song.userProvided == true && speedIsExpanded {
+                let minimum = makeSecondaryLabel("90%")
+                let maximum = makeSecondaryLabel("200%")
+                let slider = NSSlider(value: speedControl.playbackSpeed, minValue: 0.90, maxValue: 2.00, target: self, action: #selector(updateLibrarySpeed(_:)))
+                slider.tag = index
+                slider.numberOfTickMarks = 23
+                slider.allowsTickMarkValuesOnly = true
+                slider.isContinuous = false
+                slider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+                let editor = NSStackView(views: [minimum, slider, maximum])
+                editor.orientation = .horizontal
+                editor.alignment = .centerY
+                editor.spacing = 10
+                editor.edgeInsets = NSEdgeInsets(top: 0, left: 14, bottom: 12, right: 14)
+                cardContent.addArrangedSubview(editor)
+                editor.widthAnchor.constraint(equalTo: cardContent.widthAnchor).isActive = true
+            }
+            cardContent.translatesAutoresizingMaskIntoConstraints = false
+            card.addSubview(cardContent)
             NSLayoutConstraint.activate([
-                row.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-                row.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-                row.topAnchor.constraint(equalTo: card.topAnchor),
-                row.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+                cardContent.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+                cardContent.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+                cardContent.topAnchor.constraint(equalTo: card.topAnchor),
+                cardContent.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+                row.widthAnchor.constraint(equalTo: cardContent.widthAnchor),
             ])
             libraryRowsStack.addArrangedSubview(card)
             constrainToPageColumn(card, in: libraryRowsStack, horizontalInset: 0)
@@ -1157,6 +1189,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
 
     // Rebuild only local library cards after a title/credit search change.
     @objc private func filterLibrarySongs() { rebuildLibraryRows() }
+
+    // Expand one imported performance's speed slider, or collapse it when selected again.
+    @objc private func toggleLibrarySpeedEditor(_ sender: NSButton) {
+        guard songs.indices.contains(sender.tag), songs[sender.tag].userProvided == true else { return }
+        let id = songs[sender.tag].id
+        expandedSpeedSongID = expandedSpeedSongID == id ? nil : id
+        rebuildLibraryRows()
+    }
+
+    // Persist a released slider value for exactly the imported performance that owns it.
+    @objc private func updateLibrarySpeed(_ sender: NSSlider) {
+        guard songs.indices.contains(sender.tag), songs[sender.tag].userProvided == true else { return }
+        let selected = songs[sender.tag]
+        let speed = SavedSpeedControl(playbackSpeed: sender.doubleValue)
+        do {
+            _ = try userScoreStore.setPlaybackSpeed(id: selected.id, playbackSpeed: speed.playbackSpeed)
+            expandedSpeedSongID = selected.id
+            refreshLibrary(selectingID: selected.id)
+            statusLabel.stringValue = "Saved \(selected.title) at \(speed.percentageLabel)."
+        } catch {
+            statusLabel.stringValue = "Could not update saved speed: \(error.localizedDescription)"
+        }
+    }
 
     // Build the local MIDI import page with technical controls collapsed by default.
     private func makeImportView() -> NSView {
@@ -1214,6 +1269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
         playImportedButton.isEnabled = importedDocument != nil || directImportedScore != nil
         listenImportedButton.isEnabled = importedDocument != nil || directImportedScore != nil
         saveImportedButton.isEnabled = importedDocument != nil || directImportedScore != nil
+        updateImportedPreviewButton()
         updateImportedListenButton()
         let actionCard = makeImportCard(makeImportedButtons())
         stack.addArrangedSubview(actionCard)
@@ -1377,19 +1433,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
     private func configureImportControls() {
         // Offer every sensible shared key shift.
         transposePicker.addItems(withTitles: (-6...6).map { "\($0 >= 0 ? "+" : "")\($0) semitones" })
-        // Default to no shift before a file recommends one.
-        transposePicker.selectItem(at: 6)
         // Recompute the selected-track key when the user changes transposition.
         transposePicker.target = self
         transposePicker.action = #selector(refreshImportSummary)
         // Offer Smart first while retaining every legacy chromatic-note policy.
         policyPicker.addItems(withTitles: ["Smart — key-aware", "Strict — skip black keys", "Snap black keys down", "Snap black keys up"])
-        // Default every new import to key-aware reduction.
-        policyPicker.selectItem(at: 0)
         // Offer conservative near-onset chord windows.
         mergePicker.addItems(withTitles: ["Off", "15 ms", "25 ms", "40 ms"])
-        // Use 25 ms because it matches the existing streaming-safe arrangements.
-        mergePicker.selectItem(at: 2)
         // Offer the authored timing plus progressively faster performance options.
         speedPicker.addItems(withTitles: [
             "Timing: relaxed 90%",
@@ -1400,8 +1450,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             "Timing: rapid 175%",
             "Timing: maximum 200%",
         ])
-        // Preserve original timing by default.
-        speedPicker.selectItem(at: 1)
+        // Apply the same raw baseline shown after every successful MIDI load.
+        applyRawImportDefaults()
+    }
+
+    // Reset every newly loaded MIDI to source-preserving controls instead of carrying prior edits forward.
+    private func applyRawImportDefaults() {
+        let raw = ImportDefaults.raw
+        transposePicker.selectItem(at: raw.transpose + 6)
+        policyPicker.selectItem(at: [MissingNotePolicy.smart, .skip, .down, .up].firstIndex(of: raw.missingNotePolicy) ?? 1)
+        mergePicker.selectItem(at: [0, 15, 25, 40].firstIndex(of: raw.mergeToleranceMs) ?? 0)
+        speedPicker.selectItem(at: [0.90, 1.00, 1.10, 1.25, 1.50, 1.75, 2.00].firstIndex(of: raw.playbackSpeed) ?? 1)
     }
 
     // Build the labelled importer options grid.
@@ -1594,13 +1653,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
             importedTitle = url.deletingPathExtension().lastPathComponent
             // Preserve the complete filename for the live analysis summary.
             importedFilename = url.lastPathComponent
-            // Apply the engine's best shared key recommendation.
-            transposePicker.selectItem(at: max(0, min(12, document.bestTranspose + 6)))
-            // Begin every newly loaded MIDI with the recommended Smart policy.
-            policyPicker.selectItem(at: 0)
+            // Never carry a prior import's effects or automatic recommendations into this source.
+            applyRawImportDefaults()
             // Rebuild one enabled checkbox per musical source track.
             rebuildTrackButtons(document.tracks)
-            // Show selected-track fit and the key Smart will use.
+            // Show selected-track fit and the detected key available if Smart is chosen.
             refreshImportSummary()
             // Enable live conversion and playback.
             playImportedButton.isEnabled = true
@@ -1738,12 +1795,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTableViewDataSource,
 
     // Start the imported score through the common five-second player.
     @objc private func playImported() {
+        // Let the active imported keyboard preview stop itself during either countdown or playback.
+        if ImportedPreviewControl(activePlaybackID: activePlaybackID).shouldStop {
+            player.stop()
+            return
+        }
         // Generate the score from current visible options.
         guard let score = importedScore() else { return }
         // Stop local Listen audio before sending the imported score as keyboard input.
         previewPlayer.stop(silent: true)
         // Play without writing or copying the source MIDI.
         player.play(score: score, title: importedTitle, id: "import:preview", at: selectedSpeed)
+    }
+
+    // Keep the keyboard Preview action in sync with the common playback controller.
+    private func updateImportedPreviewButton() {
+        playImportedButton.title = ImportedPreviewControl(activePlaybackID: activePlaybackID).title
     }
 
     // Listen to the current imported mapping locally without sending any keyboard input.
