@@ -23,3 +23,7 @@ When you choose **Save to My Library**, Teyvat Virtuoso stores only generated ke
 Every newly opened MIDI starts at +0 transposition, Strict missing-note handling, Merge Off, and original 100% timing. Smart remains an optional mapping policy. The saved JSON already contains resolved Genshin keys, so later mapping-option changes do not rewrite it. Favourite state and each imported song's adjustable playback speed are stored only in the local `custom-library.json` manifest.
 
 **Clear Imported Library…** removes generated score JSON and resets that local manifest after confirmation. It does not remove the protected bundled Aloha arrangement or any original `.mid`/`.midi` source file.
+
+## Copyright
+
+Keep downloaded or purchased MIDI under the git-ignored `scores/private/` folder. Only redistribute sources or arrangements when you have permission. Generated score JSON lives in macOS Application Support, not in this repository.

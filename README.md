@@ -18,22 +18,22 @@
   <a href="https://github.com/philippsyrov/Teyvat-Virtuoso/issues">Issues</a>
 </p>
 
-Drop in a score, pick the tracks that matter, focus your game window, and let the app play the 21-key layout for you.
-
-Everything runs locally: MIDI parsing, mapping, saved arrangements and keyboard playback stay on your machine. It is built for **NVIDIA GeForce NOW** on macOS and also works with other focused windows that accept normal Mac keyboard input.
+**Teyvat Virtuoso is a native macOS app that turns a MIDI file or Sky Music sheet into key presses for the 21-key Genshin Impact lyre and plays them into the focused game window.** Parsing, mapping, saved arrangements and keyboard playback all run locally; it is built for NVIDIA GeForce NOW on macOS and also works with other focused windows that accept normal Mac keyboard input.
 
 <p align="center">
   <img src="assets/screenshots/library.png" alt="Teyvat Virtuoso library with saved Genshin songs and Play controls" width="88%">
 </p>
 
-<table>
-<tr><td><b>MIDI and Sky Music import</b></td><td>Drag-and-drop or open Standard MIDI plus Sky Music <code>.txt</code> / <code>.json</code> sheets from the app.</td></tr>
-<tr><td><b>Track-aware reduction</b></td><td>Enable the melody and accompaniment you want, with note-range and chord-density hints.</td></tr>
-<tr><td><b>Smart key mapping</b></td><td>Estimate major or minor context and map unavailable black keys deliberately, not at random.</td></tr>
-<tr><td><b>Real chords and tempo</b></td><td>Up to three simultaneous key-down events, source tempo preserved, playback from 90% to 200%.</td></tr>
-<tr><td><b>Focus, preview, stop</b></td><td>Five-second countdown before playback, card-level Stop, and offline tone previews.</td></tr>
-<tr><td><b>Local library</b></td><td>Save generated performances, favourites, and per-song speed, plus a bundled public-domain demo.</td></tr>
-</table>
+| Feature | What it does |
+| --- | --- |
+| **MIDI and Sky Music import** | Drag-and-drop or open Standard MIDI plus Sky Music `.txt` / `.json` sheets from the app. |
+| **Track-aware reduction** | Enable the melody and accompaniment tracks you want, with note-range and chord-density hints per track. |
+| **Smart key mapping** | Estimates major or minor context and maps unavailable black keys deliberately instead of at random; Strict handling is the default. |
+| **Real chords and tempo** | Sends up to three simultaneous key-down events, keeps the source tempo, and plays back from 90% to 200%. |
+| **Focus, preview, stop** | Five-second countdown before playback so you can click the game window, a Stop button on each card, and offline tone previews. |
+| **Local library** | Saves generated performances, favourites and per-song speed in Application Support, plus a bundled public-domain demo. |
+| **Community Collection** | Browse a curated catalog of attributed Sky Music arrangements; a song's notes download only when you choose it. |
+| **Export MIDI** | Writes a downloaded arrangement out as a standard editable `.mid` file in Downloads. |
 
 ## Install
 
@@ -45,7 +45,7 @@ Download the latest build from [GitHub Releases](https://github.com/philippsyrov
 
 Grant **Accessibility** under **System Settings → Privacy & Security → Accessibility** when macOS asks. Keyboard playback depends on it.
 
-## Build from source
+### Build from source
 
 ```zsh
 git clone https://github.com/philippsyrov/Teyvat-Virtuoso.git
@@ -59,24 +59,17 @@ The build script produces a self-contained app under `build/`. The running app d
 
 ## Docs
 
-- [Instrument key mappings](docs/Genshin_Instrument_Key_Mappings.md): the 21-key lyre layout, with worked examples.
-- [MIDI candidate preflight](docs/MIDI_Candidate_Preflight.md): whether a source will survive the 21-key reduction.
-- [Private scores](docs/PRIVATE_SCORES.md): where private MIDI belongs and what the app saves locally.
-
-## Private scores and copyright
-
-Keep downloaded or purchased MIDI under the ignored `scores/private/` folder. Only redistribute sources or arrangements when you have permission. Generated score JSON lives in macOS Application Support, not in this repository.
-
-## Disclaimer
-
-Teyvat Virtuoso is an unofficial fan tool. It is not affiliated with or endorsed by HoYoverse. Automated input may be restricted by a game’s or platform’s terms; you decide where and how to use it.
+| Doc | Covers |
+| --- | --- |
+| [docs/Genshin_Instrument_Key_Mappings.md](docs/Genshin_Instrument_Key_Mappings.md) | The 21-key, three-row lyre layout, with worked key examples |
+| [docs/MIDI_Candidate_Preflight.md](docs/MIDI_Candidate_Preflight.md) | Whether a MIDI source will survive the 21-key reduction |
+| [docs/PRIVATE_SCORES.md](docs/PRIVATE_SCORES.md) | Where private MIDI belongs, copyright, and what the app saves locally |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
 
 ## License
 
 MIT, see [LICENSE](LICENSE).
 
+Teyvat Virtuoso is an unofficial fan tool, not affiliated with or endorsed by HoYoverse. Automated input may be restricted by a game's or platform's terms; you decide where and how to use it. The workflow is inspired by [sabihoshi/GenshinLyreMidiPlayer](https://github.com/sabihoshi/GenshinLyreMidiPlayer) (MIT); Teyvat Virtuoso is an independent native macOS app with its own engine and UI.
+
 Built by [Philipp Syrov](https://github.com/philippsyrov).
-
-## Credits
-
-Inspired by the workflow of [sabihoshi/GenshinLyreMidiPlayer](https://github.com/sabihoshi/GenshinLyreMidiPlayer) (MIT). Teyvat Virtuoso is an independent native macOS app with its own engine and UI.
