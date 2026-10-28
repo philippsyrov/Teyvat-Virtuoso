@@ -24,6 +24,10 @@
 
 Everything runs locally: MIDI parsing, mapping, saved arrangements, and keyboard playback stay on your machine. It is built for **NVIDIA GeForce NOW** on macOS and also works with other focused windows that accept normal Mac keyboard input.
 
+<p align="center">
+  <img src="assets/screenshots/library.png" alt="Teyvat Virtuoso library with saved Genshin songs and Play controls" width="88%">
+</p>
+
 <table>
 <tr><td><b>MIDI and Sky Music import</b></td><td>Drag-and-drop or open Standard MIDI plus Sky Music `.txt` / `.json` sheets from the app.</td></tr>
 <tr><td><b>Track-aware reduction</b></td><td>Enable the melody and accompaniment you want, with note-range and chord-density hints.</td></tr>
@@ -38,6 +42,10 @@ Everything runs locally: MIDI parsing, mapping, saved arrangements, and keyboard
 ## Download
 
 Download the latest build from [GitHub Releases](https://github.com/philippsyrov/Teyvat-Virtuoso/releases/latest). **[v1.0.0](https://github.com/philippsyrov/Teyvat-Virtuoso/releases/tag/v1.0.0)** ships as a **macOS arm64** `.dmg`: open it and drag Teyvat Virtuoso into Applications.
+
+<p align="center">
+  <img src="assets/screenshots/import.png" alt="Import Score screen with track selection and mapping settings" width="70%">
+</p>
 
 Grant **Accessibility** under **System Settings → Privacy & Security → Accessibility** when macOS asks—keyboard playback depends on it.
 
