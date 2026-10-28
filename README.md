@@ -1,45 +1,41 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="Teyvat Virtuoso" width="100%">
+  <img src="assets/AppIcon-Paimon-Lyre.jpeg" alt="Teyvat Virtuoso app icon" width="128">
 </p>
 
-# Teyvat Virtuoso
+<h1 align="center">Teyvat Virtuoso</h1>
+
+<p align="center">Play MIDI files on the Genshin Impact lyre, natively on macOS.</p>
 
 <p align="center">
-  <a href="https://github.com/philippsyrov/Teyvat-Virtuoso/releases/latest">Download</a> |
-  <a href="docs/README.md">Documentation</a> |
+  <a href="https://github.com/philippsyrov/Teyvat-Virtuoso/releases/latest"><img src="https://img.shields.io/github/v/release/philippsyrov/Teyvat-Virtuoso?style=flat&color=555" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/platform-macOS%2013%2B-555?style=flat" alt="macOS 13+">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/philippsyrov/Teyvat-Virtuoso?style=flat&color=555" alt="MIT License"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/philippsyrov/Teyvat-Virtuoso/releases/latest">Download</a> ·
+  <a href="docs/README.md">Docs</a> ·
   <a href="https://github.com/philippsyrov/Teyvat-Virtuoso/issues">Issues</a>
 </p>
 
-<p align="center">
-  <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/Platform-macOS%2013+-FFD400?style=for-the-badge&labelColor=0a0a08&logo=apple&logoColor=FFD400" alt="macOS 13+"></a>
-  <a href="player/"><img src="https://img.shields.io/badge/Built%20with-Swift-FFD400?style=for-the-badge&labelColor=0a0a08&logo=swift&logoColor=FFD400" alt="Swift"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-FFD400?style=for-the-badge&labelColor=0a0a08" alt="License: MIT"></a>
-  <a href="https://www.nvidia.com/en-us/geforce-now/"><img src="https://img.shields.io/badge/GeForce%20NOW-Ready-FFD400?style=for-the-badge&labelColor=0a0a08&logo=nvidia&logoColor=FFD400" alt="GeForce NOW"></a>
-  <a href="https://github.com/philippsyrov/Teyvat-Virtuoso"><img src="https://img.shields.io/badge/Genshin-Lyre%20Player-FFD400?style=for-the-badge&labelColor=0a0a08" alt="Genshin lyre player"></a>
-  <a href="docs/README.md"><img src="https://img.shields.io/badge/Docs-Guide-FFD400?style=for-the-badge&labelColor=0a0a08" alt="Documentation"></a>
-  <a href="https://github.com/philippsyrov/Teyvat-Virtuoso/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/Release-v1.0.0-FFD400?style=for-the-badge&labelColor=0a0a08" alt="Release v1.0.0"></a>
-</p>
+Drop in a score, pick the tracks that matter, focus your game window, and let the app play the 21-key layout for you.
 
-**Turn Standard MIDI into live Genshin lyre performances on your Mac.** Drop in a score, pick the tracks that matter, focus your game window, and let the app play the 21-key layout for you.
-
-Everything runs locally: MIDI parsing, mapping, saved arrangements, and keyboard playback stay on your machine. It is built for **NVIDIA GeForce NOW** on macOS and also works with other focused windows that accept normal Mac keyboard input.
+Everything runs locally: MIDI parsing, mapping, saved arrangements and keyboard playback stay on your machine. It is built for **NVIDIA GeForce NOW** on macOS and also works with other focused windows that accept normal Mac keyboard input.
 
 <p align="center">
   <img src="assets/screenshots/library.png" alt="Teyvat Virtuoso library with saved Genshin songs and Play controls" width="88%">
 </p>
 
 <table>
-<tr><td><b>MIDI and Sky Music import</b></td><td>Drag-and-drop or open Standard MIDI plus Sky Music `.txt` / `.json` sheets from the app.</td></tr>
+<tr><td><b>MIDI and Sky Music import</b></td><td>Drag-and-drop or open Standard MIDI plus Sky Music <code>.txt</code> / <code>.json</code> sheets from the app.</td></tr>
 <tr><td><b>Track-aware reduction</b></td><td>Enable the melody and accompaniment you want, with note-range and chord-density hints.</td></tr>
-<tr><td><b>Smart key mapping</b></td><td>Estimate major or minor context and map unavailable black keys deliberately—not at random.</td></tr>
+<tr><td><b>Smart key mapping</b></td><td>Estimate major or minor context and map unavailable black keys deliberately, not at random.</td></tr>
 <tr><td><b>Real chords and tempo</b></td><td>Up to three simultaneous key-down events, source tempo preserved, playback from 90% to 200%.</td></tr>
 <tr><td><b>Focus, preview, stop</b></td><td>Five-second countdown before playback, card-level Stop, and offline tone previews.</td></tr>
-<tr><td><b>Local library</b></td><td>Save generated performances, favourites, and per-song speed—plus a bundled public-domain demo.</td></tr>
+<tr><td><b>Local library</b></td><td>Save generated performances, favourites, and per-song speed, plus a bundled public-domain demo.</td></tr>
 </table>
 
----
-
-## Download
+## Install
 
 Download the latest build from [GitHub Releases](https://github.com/philippsyrov/Teyvat-Virtuoso/releases/latest). **[v1.0.0](https://github.com/philippsyrov/Teyvat-Virtuoso/releases/tag/v1.0.0)** ships as a **macOS arm64** `.dmg`: open it and drag Teyvat Virtuoso into Applications.
 
@@ -47,7 +43,7 @@ Download the latest build from [GitHub Releases](https://github.com/philippsyrov
   <img src="assets/screenshots/import.png" alt="Import Score screen with track selection and mapping settings" width="70%">
 </p>
 
-Grant **Accessibility** under **System Settings → Privacy & Security → Accessibility** when macOS asks—keyboard playback depends on it.
+Grant **Accessibility** under **System Settings → Privacy & Security → Accessibility** when macOS asks. Keyboard playback depends on it.
 
 ## Build from source
 
@@ -61,15 +57,15 @@ open 'build/Teyvat Virtuoso.app'
 
 The build script produces a self-contained app under `build/`. The running app does not need Python or third-party Swift packages.
 
-<p align="center">
-  <img src="assets/G-Major-Key-Signature.jpg" alt="G major key signature — lyre mapping reference" width="480">
-</p>
+## Docs
 
----
+- [Instrument key mappings](docs/Genshin_Instrument_Key_Mappings.md): the 21-key lyre layout, with worked examples.
+- [MIDI candidate preflight](docs/MIDI_Candidate_Preflight.md): whether a source will survive the 21-key reduction.
+- [Private scores](docs/PRIVATE_SCORES.md): where private MIDI belongs and what the app saves locally.
 
 ## Private scores and copyright
 
-Keep downloaded or purchased MIDI under the ignored `scores/private/` folder. Only redistribute sources or arrangements when you have permission. Generated score JSON lives in macOS Application Support—not in this repository.
+Keep downloaded or purchased MIDI under the ignored `scores/private/` folder. Only redistribute sources or arrangements when you have permission. Generated score JSON lives in macOS Application Support, not in this repository.
 
 ## Disclaimer
 
@@ -77,7 +73,9 @@ Teyvat Virtuoso is an unofficial fan tool. It is not affiliated with or endorsed
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
+
+Built by [Philipp Syrov](https://github.com/philippsyrov).
 
 ## Credits
 
