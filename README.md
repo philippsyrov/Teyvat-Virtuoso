@@ -37,7 +37,7 @@ Everything runs locally: MIDI parsing, mapping, saved arrangements, and keyboard
 
 ## Download
 
-Browse [GitHub Releases](https://github.com/philippsyrov/Teyvat-Virtuoso/releases/latest). **v1.0.0** ships **source** on the tag—build locally on a Mac (see below). **[v0.2.1](https://github.com/philippsyrov/Teyvat-Virtuoso/releases/tag/v0.2.1)** includes a signed **macOS arm64** ZIP if you want a pre-built app from the pre-1.0 line.
+Browse [GitHub Releases](https://github.com/philippsyrov/Teyvat-Virtuoso/releases/latest). **[v0.2.1](https://github.com/philippsyrov/Teyvat-Virtuoso/releases/tag/v0.2.1)** is the current published build (signed **macOS arm64** ZIP). **v1.0.0** is a **draft** release on `main`—source and build steps below until a signed `.dmg` is attached and the release is published.
 
 Grant **Accessibility** under **System Settings → Privacy & Security → Accessibility** when macOS asks—keyboard playback depends on it.
 
