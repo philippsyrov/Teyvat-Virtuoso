@@ -405,7 +405,7 @@ class ValidateScoreTests(unittest.TestCase):
         with (app / "Contents" / "Info.plist").open("rb") as plist_file:
             metadata = plistlib.load(plist_file)
         self.assertEqual(metadata.get("CFBundleIconFile"), "AppIcon")
-        self.assertEqual(metadata.get("CFBundleShortVersionString"), "0.2.1")
+        self.assertEqual(metadata.get("CFBundleShortVersionString"), "1.0.0")
         self.assertTrue((app / "Contents" / "Resources" / "AppIcon.icns").is_file())
 
     def test_project_keeps_the_supplied_lyre_icon_artwork(self):

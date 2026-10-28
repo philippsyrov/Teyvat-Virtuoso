@@ -17,6 +17,7 @@
   <a href="https://www.nvidia.com/en-us/geforce-now/"><img src="https://img.shields.io/badge/GeForce%20NOW-Ready-FFD400?style=for-the-badge&labelColor=0a0a08&logo=nvidia&logoColor=FFD400" alt="GeForce NOW"></a>
   <a href="https://github.com/philippsyrov/Teyvat-Virtuoso"><img src="https://img.shields.io/badge/Genshin-Lyre%20Player-FFD400?style=for-the-badge&labelColor=0a0a08" alt="Genshin lyre player"></a>
   <a href="docs/README.md"><img src="https://img.shields.io/badge/Docs-Guide-FFD400?style=for-the-badge&labelColor=0a0a08" alt="Documentation"></a>
+  <a href="https://github.com/philippsyrov/Teyvat-Virtuoso/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/Release-v1.0.0-FFD400?style=for-the-badge&labelColor=0a0a08" alt="Release v1.0.0"></a>
 </p>
 
 **Turn Standard MIDI into live Genshin lyre performances on your Mac.** Drop in a score, pick the tracks that matter, focus your game window, and let the app play the 21-key layout for you.
@@ -36,7 +37,7 @@ Everything runs locally: MIDI parsing, mapping, saved arrangements, and keyboard
 
 ## Download
 
-Get the latest signed **macOS arm64** build from [GitHub Releases](https://github.com/philippsyrov/Teyvat-Virtuoso/releases/latest), unzip it, and open **Teyvat Virtuoso.app**.
+Browse [GitHub Releases](https://github.com/philippsyrov/Teyvat-Virtuoso/releases/latest). **v1.0.0** ships **source** on the tag—build locally on a Mac (see below). **[v0.2.1](https://github.com/philippsyrov/Teyvat-Virtuoso/releases/tag/v0.2.1)** includes a signed **macOS arm64** ZIP if you want a pre-built app from the pre-1.0 line.
 
 Grant **Accessibility** under **System Settings → Privacy & Security → Accessibility** when macOS asks—keyboard playback depends on it.
 
